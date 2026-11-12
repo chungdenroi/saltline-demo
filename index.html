@@ -855,7 +855,7 @@ function damagePlayer(amount, src) {
   sfx.hurt();
   var v = document.getElementById('dmg');
   if (v) { v.style.opacity = '0.85'; setTimeout(function () { v.style.opacity = '0'; }, 260); }
-  document.getElementById('hpBar').style.width = (S.hp / S.maxHp * 100) + '%';
+  updateHUD(); // v1.1: số HP chữ + thanh máu cập nhật cùng lúc — trước đây chỉ thanh máu đổi ngay trong damagePlayer, số chữ chỉ đổi ở lần updateHUD() sau nên chậm hơn máu thật (hiện 64 khi máu thật 28)
   setBoot('boot ok · state=playing · hp=' + S.hp);
   if (S.hp <= 0) gameOver();
 }
