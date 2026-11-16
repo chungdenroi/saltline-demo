@@ -785,6 +785,35 @@ if (IS_TOUCH) {
   }
   if (reloadBtn) reloadBtn.addEventListener('touchstart', function (e) { e.preventDefault(); startReload(); }, { passive: false });
   if (touchPauseBtn) touchPauseBtn.addEventListener('touchstart', function (e) { e.preventDefault(); pauseGame(); }, { passive: false });
+  // mouse support for the same buttons + joystick: lets ?touch=1 be played
+  // and tested on a desktop with a real mouse. Real touch devices fire
+  // synthesized mouse events after touchend — ignore those (the touchstart
+  // preventDefault above already suppresses most of them).
+  var isSynthMouse = function (e) { return !!(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents); };
+  if (fireBtn) {
+    fireBtn.addEventListener('mousedown', function (e) { if (isSynthMouse(e)) return; if (S.state === 'playing') { S.firing = true; fireBtn.classList.add('active'); } });
+    var fireMouseEnd = function (e) { if (e && isSynthMouse(e)) return; S.firing = false; fireBtn.classList.remove('active'); };
+    fireBtn.addEventListener('mouseup', fireMouseEnd);
+    fireBtn.addEventListener('mouseleave', fireMouseEnd);
+  }
+  if (reloadBtn) reloadBtn.addEventListener('click', function (e) { if (isSynthMouse(e)) return; startReload(); });
+  if (touchPauseBtn) touchPauseBtn.addEventListener('click', function (e) { if (isSynthMouse(e)) return; pauseGame(); });
+  if (joyBase) {
+    var joyMouse = false;
+    joyBase.addEventListener('mousedown', function (e) {
+      if (isSynthMouse(e) || joyId !== null) return;
+      joyMouse = true;
+      var r = joyBase.getBoundingClientRect();
+      joyCX = r.left + r.width / 2; joyCY = r.top + r.height / 2;
+      joyMove(e); // MouseEvent has clientX/clientY, same as a touch
+    });
+    document.addEventListener('mousemove', function (e) { if (joyMouse) joyMove(e); });
+    document.addEventListener('mouseup', function () {
+      if (!joyMouse) return; joyMouse = false;
+      touchMove.x = 0; touchMove.y = 0;
+      if (joyKnob) joyKnob.style.transform = 'translate(0px, 0px)';
+    });
+  }
 }
 
 /* ---------- player movement + collision ---------- */
@@ -808,6 +837,20 @@ function collideCircle(px, pz, r) {
     }
   }
   return [px, pz];
+}
+// simulate a short straight walk through collideCircle in small steps and
+// return the forward distance actually gained. (A single big probe step is
+// useless: if the target lands inside a box, collideCircle ejects it to the
+// nearest boundary point, which can sit "forward" of the start even though
+// the way is blocked — that false "clear" broke two earlier sidestep tries.)
+function probeForward(x, z, dirx, dirz, dist) {
+  var steps = 5, gained = 0, cx = x, cz = z;
+  for (var i = 0; i < steps; i++) {
+    var p = collideCircle(cx + dirx * dist / steps, cz + dirz * dist / steps, 0.4);
+    gained += (p[0] - cx) * dirx + (p[1] - cz) * dirz;
+    cx = p[0]; cz = p[1];
+  }
+  return gained;
 }
 var bobPhase = 0;
 function updatePlayer(dt) {
@@ -946,7 +989,10 @@ function spawnDrone(wave) {
     speed: Math.min(11, CFG.droneBaseSpeed + 0.6 * wave),
     attackCd: Math.max(0.9, CFG.droneAttackCd - 0.08 * wave),
     damage: Math.min(14, CFG.droneDamageBase + wave),
-    attackTimer: rnd(0.8, 1.6), telegraph: 0, bob: rnd(0, 6.28), strafe: Math.random() < 0.5 ? 1 : -1
+    // wave 1: drones hold their first shot ~4s longer, so the player lives
+    // long enough to meet the first raiders (wave 1 only, no easier later)
+    attackTimer: wave === 1 ? rnd(4.0, 6.0) : rnd(0.8, 1.6),
+    telegraph: 0, bob: rnd(0, 6.28), strafe: Math.random() < 0.5 ? 1 : -1
   };
   body.userData.drone = d; r1.userData.drone = d; r2.userData.drone = d;
   drones.push(d);
@@ -1165,7 +1211,9 @@ function spawnRaider(wave) {
     hp: CFG.raiderHp, maxHp: CFG.raiderHp, // 105 = 3 body shots at gunDamage 35
     speed: CFG.raiderSpeed,
     attackCd: CFG.raiderAttackCd, attackTimer: rnd(1.0, 2.0), telegraph: 0,
-    damage: CFG.raiderDamage, walkPhase: rnd(0, 6.28)
+    damage: CFG.raiderDamage, walkPhase: rnd(0, 6.28),
+    // unstuck bookkeeping (see updateRaiders): progress window + sidestep side
+    progX: spot[0], progZ: spot[1], progT: 0, stuckT: 0, side: 0, sideT: 0
   };
   // every visible part is "raider" for the world-hit skip, so decorative parts
   // (plates, pack, rifle) can never block a shot the way the old front plate did;
@@ -1182,10 +1230,60 @@ function updateRaiders(dt) {
     var dx = px - g.position.x, dz = pz - g.position.z;
     var dist = Math.hypot(dx, dz);
     g.lookAt(px, 0, pz); // face the player (visor forward, +z)
-    if (dist > CFG.raiderStopRange) {
+    // close in while out of firing range — or while a container blocks the
+    // line of fire. A raider parked 14m away behind a container neither
+    // shoots nor can be shot (verified: from the spawn pocket every raider
+    // at 14m sits behind the (0,8)/(0,18) containers, so the player could
+    // never hit one and never took a -7 hit). It must keep closing until
+    // it has a line — but never closer than 1.2m, so it can't clip into
+    // the player (a container between them keeps them ~3m apart anyway).
+    var losBlocked = segmentBlocked(g.position.x, 1.4, g.position.z, px, 1.5, pz);
+    if (dist > CFG.raiderStopRange || (dist > 1.2 && losBlocked)) {
       // walk toward the player, blocked by containers like the player is
       var dirx = dx / (dist || 1), dirz = dz / (dist || 1);
-      var p = collideCircle(g.position.x + dirx * r.speed * dt, g.position.z + dirz * r.speed * dt, 0.4);
+      var mx = dirx, mz = dirz;
+      // --- unstuck: straight pursuit + slide-only collision pins a raider
+      // head-on against a container face forever (verified headless: spawn
+      // (0,-34) sat at (0,-25.7) for 90s, never arrived). If it makes no
+      // progress for 0.5s, sidestep along the wall until straight pursuit
+      // works again; flip side after 8s so it can't loop in a pocket.
+      // 8s, not 3s: a 3s flip reversed the raider ~0.3m short of the corner
+      // (verified headless AIM2: R0 oscillated x in [-1.9,+2.5] on the (0,18)
+      // face for 50s, R1 x in [-2.4,+3.4] on the (0,8) face for 35s, probe
+      // never cleared). Close to the player the dir has a large x-component,
+      // so the tangential slide along the face is only ~1.15 m/s and the
+      // corner is 3.2s away; 8s covers the widest face (6.1m) at the
+      // slowest slide. The probe still exits the sidestep the moment
+      // straight pursuit works, so the flip is only a safety net now.
+      if (r.side !== 0) {
+        // sidestep: blend a strong tangential component so the raider
+        // slides along the blocking face and rounds its corner; drop the
+        // sidestep only when a simulated straight walk (probeForward)
+        // actually gains forward ground. Flip side after 8s so it can't
+        // loop forever in a pocket (3s was too short — see note above).
+        var tx = -dirz * r.side, tz = dirx * r.side;
+        var bl = Math.hypot(dirx + tx * 1.3, dirz + tz * 1.3);
+        mx = (dirx + tx * 1.3) / bl; mz = (dirz + tz * 1.3) / bl;
+        r.sideT -= dt;
+        if (r.sideT <= 0) { r.side = -r.side; r.sideT = 8; }
+        if (probeForward(g.position.x, g.position.z, dirx, dirz, 1.1) > 1.1 * 0.6) { r.side = 0; r.stuckT = 0; }
+      } else {
+        r.progT += dt;
+        if (r.progT >= 0.5) {
+          if (Math.hypot(g.position.x - r.progX, g.position.z - r.progZ) < 0.15) {
+            r.stuckT += 0.5;
+            if (r.stuckT >= 0.5) {
+              var tx2 = -dirz, tz2 = dirx;
+              var pa = collideCircle(g.position.x + tx2 * 0.9, g.position.z + tz2 * 0.9, 0.4);
+              var pb = collideCircle(g.position.x - tx2 * 0.9, g.position.z - tz2 * 0.9, 0.4);
+              r.side = Math.hypot(pa[0] - g.position.x, pa[1] - g.position.z) >= Math.hypot(pb[0] - g.position.x, pb[1] - g.position.z) ? 1 : -1;
+              r.sideT = 8; r.stuckT = 0;
+            }
+          } else r.stuckT = 0;
+          r.progX = g.position.x; r.progZ = g.position.z; r.progT = 0;
+        }
+      }
+      var p = collideCircle(g.position.x + mx * r.speed * dt, g.position.z + mz * r.speed * dt, 0.4);
       g.position.x = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[0]));
       g.position.z = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[1]));
       r.walkPhase += dt * r.speed * 2.4;
