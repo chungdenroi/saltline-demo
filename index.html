@@ -60,6 +60,40 @@
   #endText { margin: 12px 0 20px; font-size: 18px; color: #d8d2c2; }
   #boot { position: fixed; left: 8px; bottom: 6px; z-index: 30; font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.45); pointer-events: none; }
   #err { display: none; position: fixed; left: 8px; top: 6px; z-index: 40; max-width: 90vw; font-family: monospace; font-size: 12px; color: #ff8080; background: rgba(0,0,0,0.7); padding: 4px 8px; }
+
+  /* ---------- touch controls (only on touch devices, while playing) ---------- */
+  #touchUI { display: none; position: fixed; inset: 0; z-index: 15; pointer-events: none; }
+  body.touch.playing #touchUI { display: block; }
+  #joyBase { position: absolute; left: 20px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.07); border: 2px solid rgba(255,255,255,0.35); pointer-events: auto; touch-action: none; }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(232,183,60,0.85); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+  .tbtn { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 50%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; color: #14100a; font-weight: bold; border: none; font-family: inherit; }
+  #fireBtn { right: 20px; bottom: 30px; width: 76px; height: 76px; font-size: 17px; letter-spacing: 1px; background: #e8b73c; box-shadow: 0 4px 0 #9a7414, 0 6px 18px rgba(0,0,0,0.5); }
+  #fireBtn.active { background: #f5c95a; transform: scale(0.93); }
+  #reloadBtn { right: 108px; bottom: 48px; width: 56px; height: 56px; font-size: 22px; background: rgba(242,237,224,0.9); }
+  #touchPauseBtn { right: 14px; top: 14px; width: 44px; height: 44px; font-size: 18px; background: rgba(0,0,0,0.55); color: #f2ede0; border: 1px solid rgba(255,255,255,0.4); }
+  #rotateHint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: 86vw; text-align: center; font-size: 13px; color: #ffd27a; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,210,122,0.5); padding: 7px 12px; pointer-events: auto; display: none; white-space: nowrap; }
+  #rotateHint button { margin-left: 8px; background: none; border: none; color: #fff; font-size: 14px; cursor: pointer; }
+  /* touch: move HUD clear of the on-screen controls */
+  body.touch #bottomLeft { bottom: 168px; left: 16px; width: 170px; }
+  body.touch #bottomRight { bottom: 128px; right: 16px; }
+  body.touch #topRight { top: 68px; right: 14px; }
+  body.touch #objective { bottom: 158px; font-size: 13px; padding: 0 12px; }
+  body.touch .btn { font-size: 26px; padding: 18px 54px; }
+  body.touch #lockNote { display: none !important; }
+  .ctl-touch { display: none; }
+  body.touch .ctl-desktop { display: none; }
+  body.touch .ctl-touch { display: block; }
+  @media (max-width: 700px) {
+    .hud-box { font-size: 12px; }
+    #topLeft .big { font-size: 16px; }
+    #topRight .big { font-size: 20px; }
+    #bottomRight .big { font-size: 22px; }
+    #waveBanner { font-size: 30px; }
+    #waveBanner .sub { font-size: 14px; }
+    h2.big { font-size: 36px; }
+    .btn { font-size: 18px; padding: 12px 30px; }
+    .controls { font-size: 13px; }
+  }
 </style>
 </head>
 <body>
@@ -69,7 +103,7 @@
 <div id="hud">
   <div id="crosshair"><div class="dot"></div></div>
   <div id="hitmark"></div>
-  <div class="hud-box" id="topLeft"><div class="big" id="waveNum">WAVE 1</div><div class="small" id="dronesNum">GULLS LEFT: 0</div></div>
+  <div class="hud-box" id="topLeft"><div class="big" id="waveNum">WAVE 1</div><div class="small" id="dronesNum">HOSTILES LEFT: 0</div></div>
   <div class="hud-box" id="topRight"><div class="big" id="scoreNum">0</div><div class="small">SCORE</div></div>
   <div class="hud-box" id="bottomLeft"><div class="label">VITALS — <span id="hpNum">100</span> HP</div><div id="hpBarWrap"><div id="hpBar"></div></div></div>
   <div class="hud-box" id="bottomRight"><div class="big" id="ammoNum">30 / ∞</div><div class="small">PAC-8 LONGSHORE · R TO RELOAD</div></div>
@@ -79,23 +113,36 @@
   <div id="lockNote"></div>
 </div>
 
+<div id="touchUI">
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <button class="tbtn" id="fireBtn">BẮN</button>
+  <button class="tbtn" id="reloadBtn">⟳</button>
+  <button class="tbtn" id="touchPauseBtn">II</button>
+  <div id="rotateHint">Xoay ngang màn hình để chơi thoải mái hơn <button id="rotateDismiss" aria-label="Đóng">✕</button></div>
+</div>
+
 <div class="screen" id="startScreen">
   <div class="kicker">SALTLINE TERMINAL · 05:42 · SINGLE-FILE DEMO</div>
   <h1 class="title">SALT<span class="gold">LINE</span></h1>
   <div class="tagline">The port's security net has gone feral. Hold the berth.</div>
   <div class="meta">ONE index.html · Three.js embedded · all textures &amp; sounds generated in code · nothing downloaded</div>
   <button class="btn" id="deployBtn">▶ DEPLOY</button>
-  <div class="controls">
+  <div class="controls ctl-desktop">
     <b>W A S D</b> move &nbsp; <b>MOUSE</b> aim &nbsp; <b>CLICK</b> fire &nbsp; <b>R</b> reload &nbsp; <b>SHIFT</b> sprint<br>
-    <b>ESC</b> pause &nbsp; · &nbsp; No mouse lock? <b>DRAG</b> to look, <b>ARROWS / I J K L</b> to turn<br>
-    Shoot every Gull in the wave to clear it — next wave is faster and meaner.
+    <b>ESC</b> pause &nbsp; <b>P</b> quality &nbsp; · &nbsp; No mouse lock? <b>DRAG</b> to look, <b>ARROWS / I J K L</b> to turn<br>
+    Shoot every Gull and Raider in the wave to clear it — next wave is faster and meaner.
+  </div>
+  <div class="controls ctl-touch">
+    <b>Kéo trái</b> di chuyển &nbsp; · &nbsp; <b>Kéo phải</b> ngắm &nbsp; · &nbsp; Giữ <b>BẮN</b> để bắn &nbsp; · &nbsp; <b>⟳</b> nạp đạn<br>
+    Hạ hết Gull + Raider trong wave để qua wave — wave sau nhanh và đông hơn.
   </div>
 </div>
 
 <div class="screen" id="pauseScreen">
   <div class="kicker">OPERATION ON HOLD</div>
   <h2 class="big">PAUSED</h2>
-  <div class="controls"><b>W A S D</b> move · <b>MOUSE</b> aim · <b>CLICK</b> fire · <b>R</b> reload · <b>ESC</b> resume</div>
+  <div class="controls ctl-desktop"><b>W A S D</b> move · <b>MOUSE</b> aim · <b>CLICK</b> fire · <b>R</b> reload · <b>ESC</b> resume</div>
+  <div class="controls ctl-touch"><b>Kéo trái</b> di chuyển · <b>Kéo phải</b> ngắm · Giữ <b>BẮN</b> để bắn · <b>⟳</b> nạp đạn</div>
   <div style="margin-top:18px">
     <button class="btn" id="resumeBtn">RESUME</button>
     <button class="btn ghost" id="restartBtn">RESTART</button>
@@ -150,7 +197,9 @@ var CFG = {
   magSize: 30, fireInterval: 0.13, reloadTime: 1.4, gunDamage: 35,
   playerSpeed: 6, sprintMul: 1.55, playerRadius: 0.45, eyeHeight: 1.7,
   bounds: 55, droneBaseSpeed: 5, droneAttackRange: 20, droneAttackCd: 1.6,
-  droneDamageBase: 8, waveBonus: 250
+  droneDamageBase: 8, waveBonus: 250,
+  raiderSpeed: 2.2, raiderAttackRange: 18, raiderStopRange: 14, raiderDamage: 7,
+  raiderHp: 105, raiderScore: 150, raiderAttackCd: 2.0
 };
 var S = {
   state: 'menu', // menu | playing | paused | waveclear | gameover
@@ -159,6 +208,14 @@ var S = {
   yaw: 0, pitch: 0, keys: {}, fallback: false, dragging: false,
   lastDamageAt: -99, time: 0, kills: 0, autoStart: false
 };
+
+/* ---------- touch detection: one file, one link, auto mobile/desktop ---------- */
+var _qs = (function () { try { return new URLSearchParams(window.location.search); } catch (e) { return { get: function () { return null; } }; } })();
+var _touchParam = _qs.get('touch');
+var IS_TOUCH = _touchParam === '1' ? true : _touchParam === '0' ? false :
+  ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
+var touchMove = { x: 0, y: 0 }; // joystick vector: x = strafe right, y = forward
+if (IS_TOUCH) S.fallback = true; // no pointer lock on touch; drag-look is the aim mode
 var bootInfo = document.getElementById('boot');
 function setBoot(t) { if (bootInfo) bootInfo.textContent = t; }
 
@@ -320,7 +377,7 @@ function glowTexture() {
 /* ---------- renderer / scene / lights ---------- */
 var container = document.getElementById('app');
 var renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); // cap 1.5: desktop + mobile perf
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -475,7 +532,7 @@ var lampLightMat = new THREE.MeshStandardMaterial({ color: 0x332211, emissive: 0
 });
 
 /* rain: line segments falling around the camera */
-var RAIN_N = 1300;
+var RAIN_N = IS_TOUCH ? 650 : 1300; // mobile: half the rain streaks
 var rainPos = new Float32Array(RAIN_N * 6);
 var rainDrops = [];
 for (var ri = 0; ri < RAIN_N; ri++) {
@@ -591,6 +648,7 @@ document.addEventListener('mousemove', function (e) {
   S.pitch = Math.max(-1.45, Math.min(1.45, S.pitch));
 });
 canvas.addEventListener('mousedown', function (e) {
+  if (IS_TOUCH) return; // touch uses its own handlers (joystick / FIRE button / drag-look)
   if (S.state !== 'playing') return;
   if (e.button === 0) {
     if (document.pointerLockElement !== canvas && !S.fallback) requestLock();
@@ -602,6 +660,7 @@ canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 window.addEventListener('keydown', function (e) {
   keys[e.code] = true;
   if (e.code === 'KeyR') startReload();
+  if (e.code === 'KeyP') cycleQuality();
   if (e.code === 'Escape' && S.state === 'playing' && (S.fallback || document.pointerLockElement !== canvas)) pauseGame();
   if (e.code === 'Enter' && S.state === 'waveclear') nextWave();
   if (e.code === 'Enter' && S.state === 'gameover') restartGame();
@@ -613,6 +672,114 @@ window.addEventListener('resize', function () {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+/* ---------- quality toggle (P): HIGH = pixelRatio cap 1.5 + rain, LOW = 1.0, no rain ---------- */
+var qualityLevel = 0; // 0 = HIGH, 1 = LOW
+function cycleQuality() {
+  qualityLevel = (qualityLevel + 1) % 2;
+  if (qualityLevel === 0) {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    rain.visible = true;
+  } else {
+    renderer.setPixelRatio(1);
+    rain.visible = false;
+  }
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  setBoot('boot ok · quality=' + (qualityLevel === 0 ? 'HIGH' : 'LOW') + ' · state=' + S.state);
+}
+
+/* ---------- touch controls (mobile): joystick + drag-look + fire/reload/pause ---------- */
+var touchUI = document.getElementById('touchUI');
+var joyBase = document.getElementById('joyBase');
+var joyKnob = document.getElementById('joyKnob');
+var fireBtn = document.getElementById('fireBtn');
+var reloadBtn = document.getElementById('reloadBtn');
+var touchPauseBtn = document.getElementById('touchPauseBtn');
+var rotateHint = document.getElementById('rotateHint');
+var rotateDismissBtn = document.getElementById('rotateDismiss');
+var rotateDismissed = false;
+var _touchPlaying = false, _hintShown = false;
+var joyId = null, lookId = null, lookLastX = 0, lookLastY = 0, joyCX = 0, joyCY = 0;
+var JOY_R = 45; // knob travel radius (px)
+function joyMove(t) {
+  var dx = t.clientX - joyCX, dy = t.clientY - joyCY;
+  var len = Math.hypot(dx, dy);
+  if (len > JOY_R) { dx = dx / len * JOY_R; dy = dy / len * JOY_R; }
+  if (joyKnob) joyKnob.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+  touchMove.x = dx / JOY_R;   // + = strafe right
+  touchMove.y = -dy / JOY_R;  // + = forward (push up)
+}
+if (IS_TOUCH) {
+  document.body.classList.add('touch');
+  var ammoHint = document.querySelector('#bottomRight .small');
+  if (ammoHint) ammoHint.textContent = 'PAC-8 LONGSHORE · TAP ⟳ TO RELOAD';
+  if (rotateDismissBtn) rotateDismissBtn.addEventListener('click', function () { rotateDismissed = true; if (rotateHint) rotateHint.style.display = 'none'; });
+  if (joyBase) {
+    joyBase.addEventListener('touchstart', function (e) {
+      e.preventDefault();
+      if (joyId !== null) return;
+      var t = e.changedTouches[0];
+      joyId = t.identifier;
+      var r = joyBase.getBoundingClientRect();
+      joyCX = r.left + r.width / 2; joyCY = r.top + r.height / 2;
+      joyMove(t);
+    }, { passive: false });
+    joyBase.addEventListener('touchmove', function (e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joyId) joyMove(e.changedTouches[i]);
+      }
+    }, { passive: false });
+    var joyEnd = function (e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joyId) {
+          joyId = null; touchMove.x = 0; touchMove.y = 0;
+          if (joyKnob) joyKnob.style.transform = 'translate(0px, 0px)';
+        }
+      }
+    };
+    joyBase.addEventListener('touchend', joyEnd);
+    joyBase.addEventListener('touchcancel', joyEnd);
+  }
+  // drag anywhere else on screen to look (controls handle their own touches)
+  document.addEventListener('touchstart', function (e) {
+    if (S.state !== 'playing') return;
+    if (e.target.closest && e.target.closest('#touchUI')) return;
+    if (lookId !== null) return;
+    var t = e.changedTouches[0];
+    lookId = t.identifier; lookLastX = t.clientX; lookLastY = t.clientY;
+    e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchmove', function (e) {
+    if (lookId === null) return;
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      var t = e.changedTouches[i];
+      if (t.identifier === lookId) {
+        S.yaw -= (t.clientX - lookLastX) * 0.0045;
+        S.pitch -= (t.clientY - lookLastY) * 0.0045;
+        S.pitch = Math.max(-1.45, Math.min(1.45, S.pitch));
+        lookLastX = t.clientX; lookLastY = t.clientY;
+        e.preventDefault();
+      }
+    }
+  }, { passive: false });
+  var lookEnd = function (e) {
+    for (var i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === lookId) lookId = null;
+    }
+  };
+  document.addEventListener('touchend', lookEnd);
+  document.addEventListener('touchcancel', lookEnd);
+  // FIRE: hold to fire continuously — same rate as holding the mouse (animate loop reads S.firing)
+  if (fireBtn) {
+    fireBtn.addEventListener('touchstart', function (e) { e.preventDefault(); if (S.state === 'playing') { S.firing = true; fireBtn.classList.add('active'); } }, { passive: false });
+    var fireEnd = function () { S.firing = false; fireBtn.classList.remove('active'); };
+    fireBtn.addEventListener('touchend', fireEnd);
+    fireBtn.addEventListener('touchcancel', fireEnd);
+  }
+  if (reloadBtn) reloadBtn.addEventListener('touchstart', function (e) { e.preventDefault(); startReload(); }, { passive: false });
+  if (touchPauseBtn) touchPauseBtn.addEventListener('touchstart', function (e) { e.preventDefault(); pauseGame(); }, { passive: false });
+}
 
 /* ---------- player movement + collision ---------- */
 function collideCircle(px, pz, r) {
@@ -646,6 +813,8 @@ function updatePlayer(dt) {
   if (keys.ArrowDown || keys.KeyK) S.pitch = Math.max(-1.45, S.pitch - rot * 0.7);
 
   var sprint = (keys.ShiftLeft || keys.ShiftRight) ? CFG.sprintMul : 1;
+  // touch joystick pushed to the edge = sprint (no Shift key on mobile)
+  if (Math.hypot(touchMove.x, touchMove.y) > 0.92) sprint = CFG.sprintMul;
   var sp = CFG.playerSpeed * sprint;
   var fx = -Math.sin(S.yaw), fz = -Math.cos(S.yaw);
   var rx = Math.cos(S.yaw), rz = -Math.sin(S.yaw);
@@ -654,6 +823,11 @@ function updatePlayer(dt) {
   if (keys.KeyS) { mx -= fx; mz -= fz; }
   if (keys.KeyD) { mx += rx; mz += rz; }
   if (keys.KeyA) { mx -= rx; mz -= rz; }
+  // touch joystick feeds the SAME per-frame movement pipeline (no separate path)
+  if (touchMove.x || touchMove.y) {
+    mx += fx * touchMove.y + rx * touchMove.x;
+    mz += fz * touchMove.y + rz * touchMove.x;
+  }
   var len = Math.hypot(mx, mz);
   if (len > 0) {
     mx /= len; mz /= len;
@@ -860,6 +1034,128 @@ function damagePlayer(amount, src) {
   if (S.hp <= 0) gameOver();
 }
 
+/* ---------- raiders: humanoid ground enemies (~1.8m, navy/dark, amber visor) ---------- */
+var raiders = [];
+var dyingRaiders = []; // {group, t} — fall + sink animation after death
+var raiderTorsoGeo = new THREE.BoxGeometry(0.55, 0.7, 0.32);
+var raiderHeadGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+var raiderLegGeo = new THREE.BoxGeometry(0.16, 0.75, 0.18);
+var raiderArmGeo = new THREE.BoxGeometry(0.12, 0.6, 0.14);
+var raiderGunGeo = new THREE.BoxGeometry(0.08, 0.12, 0.55);
+var raiderMat = new THREE.MeshStandardMaterial({ color: 0x232c3d, roughness: 0.55, metalness: 0.45, envMapIntensity: 0.6 });
+var raiderDarkMat = new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.6, metalness: 0.5 });
+var raiderAccentMat = new THREE.MeshStandardMaterial({ color: 0x3a4a63, roughness: 0.5, metalness: 0.5 });
+var raiderVisorBase = new THREE.MeshStandardMaterial({ color: 0x221100, emissive: 0xffaa22, emissiveIntensity: 2.2 });
+var RAIDER_SPAWNS = [[-12, -34], [0, -34], [12, -34], [-12, 34], [0, 34], [12, 34]]; // open lane ends, clear of containers
+function spawnRaider(wave) {
+  var g = new THREE.Group();
+  var torso = new THREE.Mesh(raiderTorsoGeo, raiderMat); torso.position.y = 1.12; torso.castShadow = true; g.add(torso);
+  var plate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.06), raiderAccentMat); plate.position.set(0, 1.16, 0.18); g.add(plate);
+  var visorMat = raiderVisorBase.clone(); // per-raider so the telegraph flash is independent
+  var head = new THREE.Mesh(raiderHeadGeo, raiderDarkMat); head.position.y = 1.62; head.castShadow = true; g.add(head);
+  var visor = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.03), visorMat); visor.position.set(0, 1.63, 0.16); g.add(visor);
+  // legs pivot at the hip so they swing while walking
+  var legL = new THREE.Group(); legL.position.set(-0.13, 0.78, 0);
+  var legLMesh = new THREE.Mesh(raiderLegGeo, raiderDarkMat); legLMesh.position.y = -0.37; legLMesh.castShadow = true; legL.add(legLMesh); g.add(legL);
+  var legR = new THREE.Group(); legR.position.set(0.13, 0.78, 0);
+  var legRMesh = new THREE.Mesh(raiderLegGeo, raiderDarkMat); legRMesh.position.y = -0.37; legRMesh.castShadow = true; legR.add(legRMesh); g.add(legR);
+  // arms pivot at the shoulder; right arm carries the gun forward
+  var armL = new THREE.Group(); armL.position.set(-0.34, 1.42, 0);
+  var armLMesh = new THREE.Mesh(raiderArmGeo, raiderMat); armLMesh.position.y = -0.28; armL.add(armLMesh); g.add(armL);
+  var armR = new THREE.Group(); armR.position.set(0.34, 1.42, 0);
+  var armRMesh = new THREE.Mesh(raiderArmGeo, raiderMat); armRMesh.position.y = -0.28; armR.add(armRMesh); g.add(armR);
+  var gunMesh = new THREE.Mesh(raiderGunGeo, raiderDarkMat); gunMesh.position.set(0, -0.5, -0.28); armR.add(gunMesh);
+  var muzzleTip = new THREE.Object3D(); muzzleTip.position.set(0, -0.5, -0.58); armR.add(muzzleTip);
+  armR.rotation.x = -1.35; // right arm raised, gun pointing forward
+  // spawn on open ground at a lane end, away from the player
+  var px = camera.position.x, pz = camera.position.z, spot = null;
+  for (var tries = 0; tries < 8 && !spot; tries++) {
+    var s = RAIDER_SPAWNS[Math.floor(Math.random() * RAIDER_SPAWNS.length)];
+    var sx = s[0] + rnd(-2, 2), sz = s[1] + rnd(-2, 2);
+    if (Math.hypot(sx - px, sz - pz) > 12) spot = [sx, sz];
+  }
+  if (!spot) spot = [RAIDER_SPAWNS[0][0], RAIDER_SPAWNS[0][1]];
+  g.position.set(spot[0], 0, spot[1]);
+  scene.add(g);
+  var r = {
+    group: g, torso: torso, head: head, legL: legL, legR: legR, armL: armL, armR: armR,
+    legLMesh: legLMesh, legRMesh: legRMesh, visorMat: visorMat, muzzleTip: muzzleTip,
+    hp: CFG.raiderHp, maxHp: CFG.raiderHp, // 105 = 3 body shots at gunDamage 35
+    speed: CFG.raiderSpeed,
+    attackCd: CFG.raiderAttackCd, attackTimer: rnd(1.0, 2.0), telegraph: 0,
+    damage: CFG.raiderDamage, walkPhase: rnd(0, 6.28)
+  };
+  torso.userData.raider = r; head.userData.raider = r; head.userData.head = true;
+  legLMesh.userData.raider = r; legRMesh.userData.raider = r;
+  armLMesh.userData.raider = r; armRMesh.userData.raider = r;
+  raiders.push(r);
+  return r;
+}
+function updateRaiders(dt) {
+  var px = camera.position.x, pz = camera.position.z;
+  for (var i = raiders.length - 1; i >= 0; i--) {
+    var r = raiders[i], g = r.group;
+    var dx = px - g.position.x, dz = pz - g.position.z;
+    var dist = Math.hypot(dx, dz);
+    g.lookAt(px, 0, pz); // face the player (visor forward, +z)
+    if (dist > CFG.raiderStopRange) {
+      // walk toward the player, blocked by containers like the player is
+      var dirx = dx / (dist || 1), dirz = dz / (dist || 1);
+      var p = collideCircle(g.position.x + dirx * r.speed * dt, g.position.z + dirz * r.speed * dt, 0.4);
+      g.position.x = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[0]));
+      g.position.z = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[1]));
+      r.walkPhase += dt * r.speed * 2.4;
+      var sw = Math.sin(r.walkPhase) * 0.55;
+      r.legL.rotation.x = sw; r.legR.rotation.x = -sw;
+      r.armL.rotation.x = -sw * 0.5;
+    } else {
+      r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8; r.armL.rotation.x *= 0.8;
+    }
+    // attack: stop at range, visor flashes during the 0.5s telegraph, then fire
+    r.attackTimer -= dt;
+    if (r.telegraph > 0) {
+      r.telegraph -= dt;
+      r.visorMat.emissiveIntensity = 8 + Math.sin(S.time * 30) * 4;
+      if (r.telegraph <= 0) {
+        raiderFire(r);
+        r.visorMat.emissiveIntensity = 2.2;
+        r.attackTimer = r.attackCd * rnd(0.9, 1.25);
+      }
+    } else if (r.attackTimer <= 0 && dist < CFG.raiderAttackRange) {
+      if (!segmentBlocked(g.position.x, 1.4, g.position.z, px, 1.5, pz)) r.telegraph = 0.5;
+      else r.attackTimer = 0.6;
+    }
+  }
+  // death animation: fall over backwards, then sink and disappear
+  for (var j = dyingRaiders.length - 1; j >= 0; j--) {
+    var d = dyingRaiders[j];
+    d.t += dt;
+    d.group.rotation.x = Math.max(-Math.PI / 2, d.group.rotation.x - dt * 3.2);
+    if (d.t > 0.6) d.group.position.y -= dt * 0.35;
+    if (d.t > 1.2) { scene.remove(d.group); dyingRaiders.splice(j, 1); }
+  }
+}
+function raiderFire(r) {
+  var from = new THREE.Vector3();
+  r.muzzleTip.getWorldPosition(from);
+  spawnTracer(from.x, from.y, from.z, camera.position.x, 1.45, camera.position.z, 0xff4444);
+  noiseBurst(0.1, 900, 1, 0.35, 200);
+  damagePlayer(r.damage, 'raider');
+}
+function killRaider(r, silent) {
+  var idx = raiders.indexOf(r);
+  if (idx < 0) return;
+  raiders.splice(idx, 1);
+  if (silent) { scene.remove(r.group); return; }
+  var p = r.group.position;
+  spawnBurst(p.x, 1.1, p.z, 42, 0xff7722, 7);
+  spawnBurst(p.x, 1.1, p.z, 18, 0xffcc66, 5);
+  sfx.explode(); S.score += CFG.raiderScore; S.kills++; flashHit();
+  r.group.rotation.x = 0;
+  dyingRaiders.push({ group: r.group, t: 0 });
+  updateHUD();
+}
+
 /* ---------- shooting ---------- */
 var raycaster = new THREE.Raycaster();
 var shootPoint = new THREE.Vector3();
@@ -875,25 +1171,34 @@ function shoot() {
   raycaster.far = 120;
   var hitMeshes = [];
   drones.forEach(function (d) { hitMeshes.push(d.body, d.rotors[0], d.rotors[1]); });
+  raiders.forEach(function (r) { hitMeshes.push(r.torso, r.head, r.legLMesh, r.legRMesh); });
   var dhits = raycaster.intersectObjects(hitMeshes, false);
   var whits = raycaster.intersectObjects(scene.children, true);
-  // pick the nearest world hit for the impact point (ignore drones & gun & sky)
+  // pick the nearest world hit for the impact point (ignore drones, raiders & gun & sky)
   var worldHit = null;
   for (var i = 0; i < whits.length; i++) {
     var o = whits[i].object;
     if (o === sky || o === sunSprite || o === rain || o === points) continue;
-    if (o.userData && o.userData.drone) continue;
+    if (o.userData && (o.userData.drone || o.userData.raider)) continue;
     var anc = o; while (anc) { if (anc === gun) break; anc = anc.parent; }
     if (anc === gun) continue;
     worldHit = whits[i]; break;
   }
   if (dhits.length > 0 && (!worldHit || dhits[0].distance < worldHit.distance)) {
-    var d = dhits[0].object.userData.drone;
-    d.hp -= CFG.gunDamage;
+    var hitObj = dhits[0].object;
+    var dmg = CFG.gunDamage * (hitObj.userData.head ? 2 : 1); // headshot = double damage
     sfx.hit(); flashHit();
     spawnBurst(dhits[0].point.x, dhits[0].point.y, dhits[0].point.z, 10, 0xffcc44, 4);
     spawnTracer(mp.x, mp.y, mp.z, dhits[0].point.x, dhits[0].point.y, dhits[0].point.z, 0xffd27a);
-    if (d.hp <= 0) killDrone(d);
+    if (hitObj.userData.drone) {
+      var d = hitObj.userData.drone;
+      d.hp -= dmg;
+      if (d.hp <= 0) killDrone(d);
+    } else if (hitObj.userData.raider) {
+      var r = hitObj.userData.raider;
+      r.hp -= dmg;
+      if (r.hp <= 0) killRaider(r);
+    }
   } else if (worldHit) {
     spawnTracer(mp.x, mp.y, mp.z, worldHit.point.x, worldHit.point.y, worldHit.point.z, 0xffd27a);
     spawnBurst(worldHit.point.x, worldHit.point.y, worldHit.point.z, 6, 0xcccccc, 2.5);
@@ -920,7 +1225,7 @@ function flashHit() {
 }
 
 /* ---------- waves / game flow ---------- */
-var spawnQueue = 0, spawnTimer = 0, waveClearTimer = -1;
+var spawnQueue = 0, raiderQueue = 0, spawnTimer = 0, waveClearTimer = -1;
 var el = {};
 ['hud', 'startScreen', 'pauseScreen', 'endScreen', 'waveBanner', 'objective', 'hpNum', 'ammoNum', 'scoreNum', 'waveNum', 'dronesNum', 'endTitle', 'endText', 'nextBtn', 'retryBtn', 'deployBtn', 'resumeBtn', 'restartBtn', 'menuBtn'].forEach(function (id) { el[id] = document.getElementById(id); });
 function updateHUD() {
@@ -930,7 +1235,7 @@ function updateHUD() {
   el.ammoNum.textContent = S.ammo + ' / ∞';
   el.scoreNum.textContent = S.score;
   el.waveNum.textContent = 'WAVE ' + S.wave;
-  el.dronesNum.textContent = 'GULLS LEFT: ' + (drones.length + spawnQueue);
+  el.dronesNum.textContent = 'HOSTILES LEFT: ' + (drones.length + raiders.length + spawnQueue + raiderQueue);
 }
 function showBanner(text, sub) {
   el.waveBanner.innerHTML = text + (sub ? '<div class="sub">' + sub + '</div>' : '');
@@ -943,6 +1248,10 @@ function startGame() {
   S.score = 0; S.kills = 0; S.hp = S.maxHp; S.ammo = CFG.magSize; S.wave = 0;
   S.reloading = false; S.firing = false;
   drones.slice().forEach(function (d) { killDrone(d, true); });
+  raiders.slice().forEach(function (r) { killRaider(r, true); });
+  dyingRaiders.slice().forEach(function (d) { scene.remove(d.group); });
+  dyingRaiders.length = 0;
+  raiderQueue = 0;
   el.startScreen.style.display = 'none'; el.endScreen.style.display = 'none'; el.pauseScreen.style.display = 'none';
   el.hud.style.display = 'block';
   S.state = 'playing';
@@ -954,10 +1263,11 @@ function startGame() {
 }
 function startWave(n) {
   S.wave = n;
-  var count = 4 + 2 * n;
-  spawnQueue = count; spawnTimer = 0.5;
-  showBanner('WAVE ' + n, count + ' GULLS INBOUND — HOLD THE BERTH');
-  setObjective('CONTROL: Gulls inbound — cut them down. Wave ' + n + ' of the night shift.');
+  var droneCount = 4 + 2 * n; // wave 1: 6 gulls
+  var raiderCount = 1 + n;    // wave 1: 2 raiders — mixed from the first wave
+  spawnQueue = droneCount; raiderQueue = raiderCount; spawnTimer = 0.5;
+  showBanner('WAVE ' + n, (droneCount + raiderCount) + ' HOSTILES INBOUND — GULLS + RAIDERS');
+  setObjective('CONTROL: Gulls in the sky, raiders on the ground — cut them all down. Wave ' + n + ' of the night shift.');
   sfx.wave();
   updateHUD();
 }
@@ -973,7 +1283,7 @@ function waveCleared() {
   S.state = 'waveclear';
   sfx.clear();
   el.endTitle.textContent = 'WAVE ' + S.wave + ' CLEAR';
-  el.endText.textContent = 'All gulls down. Bonus +' + bonus + ' · Score ' + S.score + ' · Kills ' + S.kills;
+  el.endText.textContent = 'All hostiles down. Bonus +' + bonus + ' · Score ' + S.score + ' · Kills ' + S.kills;
   el.nextBtn.style.display = 'inline-block'; el.retryBtn.style.display = 'none';
   el.endScreen.style.display = 'flex';
   if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -1018,6 +1328,13 @@ function animate() {
   requestAnimationFrame(animate);
   var dt = Math.min(clock.getDelta(), 0.05);
   S.time += dt;
+  // touch UI visibility + portrait hint (cached so the DOM is only touched on change)
+  if (IS_TOUCH) {
+    var wantPlaying = (S.state === 'playing');
+    if (wantPlaying !== _touchPlaying) { _touchPlaying = wantPlaying; document.body.classList.toggle('playing', wantPlaying); }
+    var wantHint = wantPlaying && !rotateDismissed && window.innerHeight > window.innerWidth;
+    if (wantHint !== _hintShown) { _hintShown = wantHint; if (rotateHint) rotateHint.style.display = wantHint ? 'block' : 'none'; }
+  }
   // rain & splashes always run (living menu background, like Saltline)
   updateRain(dt, camera.position.x, camera.position.z);
   updateSplashes(dt, camera.position.x, camera.position.z);
@@ -1031,20 +1348,22 @@ function animate() {
     camera.lookAt(0, 3, -6);
   } else if (S.state === 'playing') {
     updatePlayer(dt);
-    // spawn queue
-    if (spawnQueue > 0) {
+    // spawn queue (drones + raiders, mixed from wave 1)
+    if (spawnQueue > 0 || raiderQueue > 0) {
       spawnTimer -= dt;
-      if (spawnTimer <= 0 && drones.length < 6) {
-        spawnDrone(S.wave);
-        spawnQueue--;
+      if (spawnTimer <= 0 && drones.length + raiders.length < 7) {
+        var spawnRaiderNow = raiderQueue > 0 && (spawnQueue === 0 || Math.random() < 0.4);
+        if (spawnRaiderNow) { spawnRaider(S.wave); raiderQueue--; }
+        else { spawnDrone(S.wave); spawnQueue--; }
         spawnTimer = 2.2;
         updateHUD();
       }
     }
     updateDrones(dt);
+    updateRaiders(dt);
     if (S.firing && !S.reloading && S.time - S.lastShot >= CFG.fireInterval) shoot();
     if (S.reloading && S.time >= S.reloadEnd) finishReload();
-    if (spawnQueue === 0 && drones.length === 0) waveCleared();
+    if (spawnQueue === 0 && raiderQueue === 0 && drones.length === 0 && raiders.length === 0) waveCleared();
     fpsAcc += dt; fpsN++;
     if (fpsN >= 30) { fpsShown = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; setBoot('boot ok · state=playing · fps~' + fpsShown + ' · wave=' + S.wave + ' · hp=' + Math.ceil(S.hp) + ' · score=' + S.score); }
   }
