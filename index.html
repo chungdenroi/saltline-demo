@@ -609,6 +609,12 @@ var gun = new THREE.Group();
   camera.add(gun);
 })();
 scene.add(camera);
+// camera fill: lifts the shadow side of whatever the player looks at (dawn sun
+// is low ahead, so enemies facing the player would otherwise read as black blobs)
+var fillLight = new THREE.DirectionalLight(0xfff2e0, 0.45);
+fillLight.position.set(0, 0.4, 0.3);
+var fillTarget = new THREE.Object3D(); fillTarget.position.set(0, 0, -5);
+camera.add(fillLight); camera.add(fillTarget); fillLight.target = fillTarget;
 var muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.02, -0.78); gun.add(muzzle);
 var flashMat = new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffd27a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
 var flash = new THREE.Sprite(flashMat); flash.scale.set(0.001, 0.001, 1); flash.position.set(0, 0.02, -0.8); gun.add(flash);
@@ -1034,39 +1040,114 @@ function damagePlayer(amount, src) {
   if (S.hp <= 0) gameOver();
 }
 
-/* ---------- raiders: humanoid ground enemies (~1.8m, navy/dark, amber visor) ---------- */
+/* ---------- raiders: tactical soldier (~1.8m) — tapered cylinders + fabric camo,
+   helmet + curved visor, plate carrier, two-handed rifle. Behaviour numbers
+   identical to v2.0; only the LOOK changed. ---------- */
 var raiders = [];
 var dyingRaiders = []; // {group, t} — fall + sink animation after death
-var raiderTorsoGeo = new THREE.BoxGeometry(0.55, 0.7, 0.32);
-var raiderHeadGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-var raiderLegGeo = new THREE.BoxGeometry(0.16, 0.75, 0.18);
-var raiderArmGeo = new THREE.BoxGeometry(0.12, 0.6, 0.14);
-var raiderGunGeo = new THREE.BoxGeometry(0.08, 0.12, 0.55);
-var raiderMat = new THREE.MeshStandardMaterial({ color: 0x232c3d, roughness: 0.55, metalness: 0.45, envMapIntensity: 0.6 });
-var raiderDarkMat = new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.6, metalness: 0.5 });
-var raiderAccentMat = new THREE.MeshStandardMaterial({ color: 0x3a4a63, roughness: 0.5, metalness: 0.5 });
+
+// procedural fabric camo (runtime canvas — 0 extra file bytes)
+function makeCamoTexture() {
+  var c = document.createElement('canvas'); c.width = c.height = 128;
+  var x = c.getContext('2d');
+  x.fillStyle = '#28324a'; x.fillRect(0, 0, 128, 128);
+  var cols = ['#232c3d', '#35415a', '#1d2531', '#3d4a63', '#2e3a4e'];
+  for (var i = 0; i < 80; i++) {
+    x.fillStyle = cols[i % cols.length];
+    x.globalAlpha = 0.22 + Math.random() * 0.3;
+    var r = 4 + Math.random() * 15;
+    x.beginPath(); x.ellipse(Math.random() * 128, Math.random() * 128, r, r * 0.55, Math.random() * 3, 0, 6.29); x.fill();
+  }
+  x.globalAlpha = 1;
+  var t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+var raiderCamo = makeCamoTexture();
+var raiderUniformMat = new THREE.MeshStandardMaterial({ map: raiderCamo, color: 0xbfc8dd, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.55 });
+var raiderArmorMat = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.5, metalness: 0.35, envMapIntensity: 0.5 });
+var raiderDarkMat = new THREE.MeshStandardMaterial({ color: 0x12161d, roughness: 0.55, metalness: 0.4, envMapIntensity: 0.5 });
+var raiderAccentMat = new THREE.MeshStandardMaterial({ color: 0x4a5a75, roughness: 0.5, metalness: 0.4, envMapIntensity: 0.5 });
+var raiderAmberMat = new THREE.MeshStandardMaterial({ color: 0x442200, emissive: 0xffaa22, emissiveIntensity: 1.2 });
 var raiderVisorBase = new THREE.MeshStandardMaterial({ color: 0x221100, emissive: 0xffaa22, emissiveIntensity: 2.2 });
+// shared geometries (one set for all raiders)
+var raiderTorsoGeo = new THREE.CylinderGeometry(0.26, 0.20, 0.66, 12); // chest -> waist taper
+var raiderHeadGeo = new THREE.SphereGeometry(0.155, 18, 14);            // helmet dome
+var raiderLegGeo = new THREE.CylinderGeometry(0.085, 0.058, 0.76, 10);  // thigh -> ankle taper
+var raiderArmGeo = new THREE.CylinderGeometry(0.06, 0.048, 0.56, 10);   // left arm, near-straight reach
+var raiderArmShortGeo = new THREE.CylinderGeometry(0.06, 0.048, 0.48, 10); // right arm, bent at elbow
+var raiderPadGeo = new THREE.SphereGeometry(0.11, 12, 8);
+var raiderGloveGeo = new THREE.SphereGeometry(0.055, 10, 8);
+var raiderBootGeo = new THREE.BoxGeometry(0.13, 0.09, 0.27);
+var raiderKneeGeo = new THREE.SphereGeometry(0.07, 10, 8);
+var raiderPlateGeo = new THREE.BoxGeometry(0.34, 0.38, 0.07);
+var raiderPackGeo = new THREE.BoxGeometry(0.36, 0.44, 0.15);
+var raiderVisorGeo = new THREE.CylinderGeometry(0.158, 0.158, 0.05, 18, 1, true, -0.85, 1.7); // curved band, front of helmet
+var raiderFaceGeo = new THREE.CylinderGeometry(0.16, 0.15, 0.13, 14, 1, true, -0.65, 1.3);   // mandible guard
 var RAIDER_SPAWNS = [[-12, -34], [0, -34], [12, -34], [-12, 34], [0, 34], [12, 34]]; // open lane ends, clear of containers
 function spawnRaider(wave) {
   var g = new THREE.Group();
-  var torso = new THREE.Mesh(raiderTorsoGeo, raiderMat); torso.position.y = 1.12; torso.castShadow = true; g.add(torso);
-  var plate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.06), raiderAccentMat); plate.position.set(0, 1.16, 0.18); g.add(plate);
+  // torso (hit mesh) — tapered cylinder, chest wider than waist, fabric camo
+  var torso = new THREE.Mesh(raiderTorsoGeo, raiderUniformMat);
+  torso.scale.set(1, 1, 0.62); torso.position.y = 1.11; torso.castShadow = true; g.add(torso);
+  // plate carrier front + back, amber chest tape (same amber as the visor)
+  var plateF = new THREE.Mesh(raiderPlateGeo, raiderArmorMat); plateF.position.set(0, 1.16, 0.175); plateF.castShadow = true; g.add(plateF);
+  var plateB = new THREE.Mesh(raiderPlateGeo, raiderArmorMat); plateB.position.set(0, 1.16, -0.175); g.add(plateB);
+  var tape = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.025, 0.012), raiderAmberMat); tape.position.set(0, 1.32, 0.215); g.add(tape);
+  // belt + pouch, backpack + bedroll, shoulder pads
+  var belt = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.08, 12), raiderDarkMat);
+  belt.scale.set(1, 1, 0.62); belt.position.y = 0.83; g.add(belt);
+  var pouch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.06), raiderArmorMat); pouch.position.set(0.13, 0.83, 0.13); g.add(pouch);
+  var pack = new THREE.Mesh(raiderPackGeo, raiderUniformMat); pack.position.set(0, 1.18, -0.25); pack.castShadow = true; g.add(pack);
+  var roll = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.36, 10), raiderArmorMat);
+  roll.rotation.z = Math.PI / 2; roll.position.set(0, 1.43, -0.25); g.add(roll);
+  var padL = new THREE.Mesh(raiderPadGeo, raiderArmorMat); padL.scale.set(1, 0.55, 1); padL.position.set(-0.30, 1.43, 0); g.add(padL);
+  var padR = new THREE.Mesh(raiderPadGeo, raiderArmorMat); padR.scale.set(1, 0.55, 1); padR.position.set(0.30, 1.43, 0); g.add(padR);
+  // neck, helmet dome (hit mesh) + brim, mandible guard, curved amber visor
+  var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 10), raiderDarkMat); neck.position.y = 1.47; g.add(neck);
   var visorMat = raiderVisorBase.clone(); // per-raider so the telegraph flash is independent
   var head = new THREE.Mesh(raiderHeadGeo, raiderDarkMat); head.position.y = 1.62; head.castShadow = true; g.add(head);
-  var visor = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.03), visorMat); visor.position.set(0, 1.63, 0.16); g.add(visor);
-  // legs pivot at the hip so they swing while walking
+  var brim = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.168, 0.025, 18), raiderArmorMat); brim.position.y = 1.615; g.add(brim);
+  var face = new THREE.Mesh(raiderFaceGeo, raiderArmorMat); face.position.y = 1.545; g.add(face);
+  var visor = new THREE.Mesh(raiderVisorGeo, visorMat); visor.position.y = 1.63; g.add(visor);
+  // legs pivot at the hip so they swing while walking (tapered + knee pad + boot)
   var legL = new THREE.Group(); legL.position.set(-0.13, 0.78, 0);
-  var legLMesh = new THREE.Mesh(raiderLegGeo, raiderDarkMat); legLMesh.position.y = -0.37; legLMesh.castShadow = true; legL.add(legLMesh); g.add(legL);
+  var legLMesh = new THREE.Mesh(raiderLegGeo, raiderUniformMat); legLMesh.position.y = -0.38; legLMesh.castShadow = true; legL.add(legLMesh);
+  var kneeL = new THREE.Mesh(raiderKneeGeo, raiderArmorMat); kneeL.scale.set(1, 1, 0.6); kneeL.position.set(0, -0.38, 0.075); legL.add(kneeL);
+  var bootL = new THREE.Mesh(raiderBootGeo, raiderDarkMat); bootL.position.set(0, -0.735, 0.05); legL.add(bootL);
+  g.add(legL);
   var legR = new THREE.Group(); legR.position.set(0.13, 0.78, 0);
-  var legRMesh = new THREE.Mesh(raiderLegGeo, raiderDarkMat); legRMesh.position.y = -0.37; legRMesh.castShadow = true; legR.add(legRMesh); g.add(legR);
-  // arms pivot at the shoulder; right arm carries the gun forward
-  var armL = new THREE.Group(); armL.position.set(-0.34, 1.42, 0);
-  var armLMesh = new THREE.Mesh(raiderArmGeo, raiderMat); armLMesh.position.y = -0.28; armL.add(armLMesh); g.add(armL);
-  var armR = new THREE.Group(); armR.position.set(0.34, 1.42, 0);
-  var armRMesh = new THREE.Mesh(raiderArmGeo, raiderMat); armRMesh.position.y = -0.28; armR.add(armRMesh); g.add(armR);
-  var gunMesh = new THREE.Mesh(raiderGunGeo, raiderDarkMat); gunMesh.position.set(0, -0.5, -0.28); armR.add(gunMesh);
-  var muzzleTip = new THREE.Object3D(); muzzleTip.position.set(0, -0.5, -0.58); armR.add(muzzleTip);
-  armR.rotation.x = -1.35; // right arm raised, gun pointing forward
+  var legRMesh = new THREE.Mesh(raiderLegGeo, raiderUniformMat); legRMesh.position.y = -0.38; legRMesh.castShadow = true; legR.add(legRMesh);
+  var kneeR = new THREE.Mesh(raiderKneeGeo, raiderArmorMat); kneeR.scale.set(1, 1, 0.6); kneeR.position.set(0, -0.38, 0.075); legR.add(kneeR);
+  var bootR = new THREE.Mesh(raiderBootGeo, raiderDarkMat); bootR.position.set(0, -0.735, 0.05); legR.add(bootR);
+  g.add(legR);
+  // rifle — built once, held at chest height pointing forward (+z); arms are
+  // posed onto it below, so the whole assembly stays rigid while walking
+  var rifle = new THREE.Group(); rifle.position.set(0, 1.30, 0.30);
+  var receiver = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.36), raiderDarkMat); receiver.castShadow = true; rifle.add(receiver);
+  var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.30, 8), raiderDarkMat);
+  barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.01, 0.30); rifle.add(barrel);
+  var muzzleRing = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.03, 10), raiderAmberMat);
+  muzzleRing.rotation.x = Math.PI / 2; muzzleRing.position.set(0, 0.01, 0.44); rifle.add(muzzleRing);
+  var handguard = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.09, 0.24), raiderAccentMat); handguard.position.set(0, 0.005, 0.17); rifle.add(handguard);
+  var stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.18), raiderDarkMat); stock.position.set(0, -0.01, -0.25); rifle.add(stock);
+  var magazine = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.15, 0.09), raiderDarkMat); magazine.rotation.x = 0.15; magazine.position.set(0, -0.12, 0.03); rifle.add(magazine);
+  var grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.11, 0.06), raiderDarkMat); grip.rotation.x = 0.25; grip.position.set(0, -0.11, -0.11); rifle.add(grip);
+  var sight = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.12), raiderDarkMat); sight.position.set(0, 0.09, -0.03); rifle.add(sight);
+  var muzzleTip = new THREE.Object3D(); muzzleTip.position.set(0, 0.01, 0.47); rifle.add(muzzleTip);
+  g.add(rifle);
+  // arms pivot at the shoulder; aim each arm's -y axis straight at its grip point
+  // (right hand -> pistol grip, left hand -> handguard) so the gloves land on the rifle
+  var armL = new THREE.Group(); armL.position.set(-0.32, 1.44, 0.02);
+  var armLMesh = new THREE.Mesh(raiderArmGeo, raiderUniformMat); armLMesh.position.y = -0.28; armL.add(armLMesh);
+  var gloveL = new THREE.Mesh(raiderGloveGeo, raiderDarkMat); gloveL.position.y = -0.56; armL.add(gloveL);
+  armL.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0.32, -0.135, 0.45).normalize());
+  g.add(armL);
+  var armR = new THREE.Group(); armR.position.set(0.32, 1.44, 0.02);
+  var armRMesh = new THREE.Mesh(raiderArmShortGeo, raiderUniformMat); armRMesh.position.y = -0.24; armR.add(armRMesh);
+  var gloveR = new THREE.Mesh(raiderGloveGeo, raiderDarkMat); gloveR.position.y = -0.48; armR.add(gloveR);
+  armR.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(-0.32, -0.25, 0.17).normalize());
+  g.add(armR);
   // spawn on open ground at a lane end, away from the player
   var px = camera.position.x, pz = camera.position.z, spot = null;
   for (var tries = 0; tries < 8 && !spot; tries++) {
@@ -1080,14 +1161,17 @@ function spawnRaider(wave) {
   var r = {
     group: g, torso: torso, head: head, legL: legL, legR: legR, armL: armL, armR: armR,
     legLMesh: legLMesh, legRMesh: legRMesh, visorMat: visorMat, muzzleTip: muzzleTip,
+    rifle: rifle, recoil: 0,
     hp: CFG.raiderHp, maxHp: CFG.raiderHp, // 105 = 3 body shots at gunDamage 35
     speed: CFG.raiderSpeed,
     attackCd: CFG.raiderAttackCd, attackTimer: rnd(1.0, 2.0), telegraph: 0,
     damage: CFG.raiderDamage, walkPhase: rnd(0, 6.28)
   };
-  torso.userData.raider = r; head.userData.raider = r; head.userData.head = true;
-  legLMesh.userData.raider = r; legRMesh.userData.raider = r;
-  armLMesh.userData.raider = r; armRMesh.userData.raider = r;
+  // every visible part is "raider" for the world-hit skip, so decorative parts
+  // (plates, pack, rifle) can never block a shot the way the old front plate did;
+  // damage still registers only on torso / head / legs (see shoot())
+  g.traverse(function (o) { if (o.isMesh) o.userData.raider = r; });
+  head.userData.head = true;
   raiders.push(r);
   return r;
 }
@@ -1107,10 +1191,18 @@ function updateRaiders(dt) {
       r.walkPhase += dt * r.speed * 2.4;
       var sw = Math.sin(r.walkPhase) * 0.55;
       r.legL.rotation.x = sw; r.legR.rotation.x = -sw;
-      r.armL.rotation.x = -sw * 0.5;
+      g.position.y = Math.abs(Math.sin(r.walkPhase)) * 0.03; // step bob
+      g.rotateX(0.06); // slight forward lean while advancing (arms stay on the rifle)
     } else {
-      r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8; r.armL.rotation.x *= 0.8;
+      r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8;
+      g.position.y *= 0.8;
+      g.rotateX(0.03); // ready stance
     }
+    // rifle: raise to aim during the telegraph, kick back when firing
+    r.recoil = Math.max(0, r.recoil - dt * 6);
+    var aimTilt = r.telegraph > 0 ? -0.08 : 0;
+    r.rifle.rotation.x += ((aimTilt - 0.06 * r.recoil) - r.rifle.rotation.x) * Math.min(1, dt * 12);
+    r.rifle.position.z = 0.30 - 0.05 * r.recoil;
     // attack: stop at range, visor flashes during the 0.5s telegraph, then fire
     r.attackTimer -= dt;
     if (r.telegraph > 0) {
@@ -1140,6 +1232,7 @@ function raiderFire(r) {
   r.muzzleTip.getWorldPosition(from);
   spawnTracer(from.x, from.y, from.z, camera.position.x, 1.45, camera.position.z, 0xff4444);
   noiseBurst(0.1, 900, 1, 0.35, 200);
+  r.recoil = 1; // rifle kick (decays in updateRaiders)
   damagePlayer(r.damage, 'raider');
 }
 function killRaider(r, silent) {
