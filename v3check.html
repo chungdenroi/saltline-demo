@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="build-revision" content="v3.0.0-20261116-a">
+<meta name="build-revision" content="v3.0.0-20261116-b">
 <title>SALTLINE DEMO — Single-File Procedural FPS</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -69,8 +69,8 @@
   /* ---------- touch controls (only on touch devices, while playing) ---------- */
   #touchUI { display: none; position: fixed; inset: 0; z-index: 15; pointer-events: none; }
   body.touch.playing #touchUI { display: block; }
-  #joyBase { position: absolute; left: max(18px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); width: 112px; height: 112px; border-radius: 50%; background: rgba(255,255,255,0.07); border: 2px solid rgba(255,255,255,0.35); pointer-events: auto; touch-action: none; }
-  #joyKnob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(232,183,60,0.85); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+  #joyBase { position: absolute; left: max(18px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); width: 128px; height: 128px; border-radius: 50%; background: rgba(255,255,255,0.07); border: 2px solid rgba(255,255,255,0.35); pointer-events: auto; touch-action: none; }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(232,183,60,0.85); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
   .tbtn { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 50%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; font-family: inherit; border: 1.5px solid rgba(226,185,109,0.65); background: rgba(13,23,29,0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
   .tbtn svg { display: block; }
   #fireBtn { right: max(22px, env(safe-area-inset-right)); bottom: max(34px, env(safe-area-inset-bottom)); width: 78px; height: 78px; }
@@ -124,7 +124,7 @@
   <div class="hud-box" id="topLeft"><div class="big" id="waveNum">LEVEL 1</div><div class="small" id="hostilesNum">HOSTILES LEFT: 0</div></div>
   <div class="hud-box" id="topRight"><div class="big" id="scoreNum">0</div><div class="small">SCORE</div></div>
   <canvas id="radar" width="176" height="176"></canvas>
-  <div id="build-version">v3.0.0 · v3.0.0-20261116-a</div>
+  <div id="build-version">v3.0.0 · v3.0.0-20261116-b</div>
   <div class="hud-box" id="bottomLeft"><div class="label">VITALS — <span id="hpNum">100</span> HP</div><div id="hpBarWrap"><div id="hpBar"></div></div></div>
   <div class="hud-box" id="bottomRight"><div class="big" id="ammoNum">30 / ∞</div><div class="small">PAC-8 LONGSHORE · R TO RELOAD</div></div>
   <div id="reload">⟳ RELOADING…</div>
@@ -243,7 +243,7 @@ function levelMultipliers(level) {
 /* ---------- build fingerprint (v3.0, GPT guide §7.1) ----------
    Revision changes on every deploy — it is the cache-proof identity of the
    build the player actually loaded (more useful than the version alone). */
-var BUILD = { version: '3.0.0', revision: 'v3.0.0-20261116-a', builtAt: '2026-11-16T13:30:00+07:00' };
+var BUILD = { version: '3.0.0', revision: 'v3.0.0-20261116-b', builtAt: '2026-11-16T14:53:50+07:00' };
 if (window.console && console.info) console.info('[BUILD]', BUILD.revision);
 
 /* ---------- wave state machine + spawn accounting (GPT guide §7.2) ----------
@@ -350,7 +350,7 @@ var S = {
 var _touchParam = _qs.get('touch');
 var IS_TOUCH = _touchParam === '1' ? true : _touchParam === '0' ? false :
   ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
-var touchMove = { x: 0, y: 0 }; // joystick vector: x = strafe right, y = forward
+var touchMove = { x: 0, y: 0, mag: 0 }; // joystick vector: x = strafe right, y = forward; mag = raw push 0..1
 if (IS_TOUCH) S.fallback = true; // no pointer lock on touch; drag-look is the aim mode
 var bootInfo = document.getElementById('boot');
 function setBoot(t) { if (bootInfo) bootInfo.textContent = t; }
@@ -863,14 +863,24 @@ var rotateDismissBtn = document.getElementById('rotateDismiss');
 var rotateDismissed = false;
 var _touchPlaying = false, _hintShown = false;
 var joyId = null, lookId = null, lookLastX = 0, lookLastY = 0, joyCX = 0, joyCY = 0;
-var JOY_R = 32; // knob travel radius (px) — 112px base, 48px knob
+var JOY_R = 36; // knob travel radius (px) — 128px base, 56px knob
+var JOY_DEAD = 0.08; // ignore the innermost 8% of joystick travel (resting-thumb drift)
+// v3.1: touch look sensitivity scales with screen width so one full-width
+// swipe turns ~195° (3.4 rad) on any phone. Was a flat 0.0045: only ~100°
+// per full swipe on a 390px phone (user: "khó di chuyển"). Desktop
+// pointer-lock (0.0023) and drag fallback (0.004) are unchanged.
+function touchLookSens() { return 3.4 / Math.max(window.innerWidth, 320); }
 function joyMove(t) {
   var dx = t.clientX - joyCX, dy = t.clientY - joyCY;
   var len = Math.hypot(dx, dy);
-  if (len > JOY_R) { dx = dx / len * JOY_R; dy = dy / len * JOY_R; }
+  if (len > JOY_R) { dx = dx / len * JOY_R; dy = dy / len * JOY_R; len = JOY_R; }
   if (joyKnob) joyKnob.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
-  touchMove.x = dx / JOY_R;   // + = strafe right
-  touchMove.y = -dy / JOY_R;  // + = forward (push up)
+  touchMove.mag = len / JOY_R; // raw push 0..1 (sprint threshold reads this)
+  if (touchMove.mag < JOY_DEAD) { touchMove.x = 0; touchMove.y = 0; return; }
+  // rescale so full push is still 1.0 after the dead zone
+  var out = (touchMove.mag - JOY_DEAD) / (1 - JOY_DEAD);
+  touchMove.x = dx / len * out;   // + = strafe right
+  touchMove.y = -dy / len * out;  // + = forward (push up)
 }
 if (IS_TOUCH) {
   document.body.classList.add('touch');
@@ -896,7 +906,7 @@ if (IS_TOUCH) {
     var joyEnd = function (e) {
       for (var i = 0; i < e.changedTouches.length; i++) {
         if (e.changedTouches[i].identifier === joyId) {
-          joyId = null; touchMove.x = 0; touchMove.y = 0;
+          joyId = null; touchMove.x = 0; touchMove.y = 0; touchMove.mag = 0;
           if (joyKnob) joyKnob.style.transform = 'translate(0px, 0px)';
         }
       }
@@ -924,8 +934,8 @@ if (IS_TOUCH) {
     for (var i = 0; i < e.changedTouches.length; i++) {
       var t = e.changedTouches[i];
       if (t.identifier === lookId) {
-        S.yaw -= (t.clientX - lookLastX) * 0.0045;
-        S.pitch -= (t.clientY - lookLastY) * 0.0045;
+        S.yaw -= (t.clientX - lookLastX) * touchLookSens();
+        S.pitch -= (t.clientY - lookLastY) * touchLookSens();
         S.pitch = Math.max(-1.45, Math.min(1.45, S.pitch));
         lookLastX = t.clientX; lookLastY = t.clientY;
         if (Math.hypot(t.clientX - tapStartX, t.clientY - tapStartY) > TAP_SLOP) tapMoved = true;
@@ -981,7 +991,7 @@ if (IS_TOUCH) {
     document.addEventListener('mousemove', function (e) { if (joyMouse) joyMove(e); });
     document.addEventListener('mouseup', function () {
       if (!joyMouse) return; joyMouse = false;
-      touchMove.x = 0; touchMove.y = 0;
+      touchMove.x = 0; touchMove.y = 0; touchMove.mag = 0;
       if (joyKnob) joyKnob.style.transform = 'translate(0px, 0px)';
     });
   }
@@ -1033,8 +1043,8 @@ function updatePlayer(dt) {
   if (keys.ArrowDown || keys.KeyK) S.pitch = Math.max(-1.45, S.pitch - rot * 0.7);
 
   var sprint = (keys.ShiftLeft || keys.ShiftRight) ? CFG.sprintMul : 1;
-  // touch joystick pushed to the edge = sprint (no Shift key on mobile)
-  if (Math.hypot(touchMove.x, touchMove.y) > 0.92) sprint = CFG.sprintMul;
+  // touch joystick pushed past 80% = sprint (no Shift key on mobile; was 92%)
+  if ((touchMove.mag || 0) > 0.80) sprint = CFG.sprintMul;
   var sp = CFG.playerSpeed * sprint;
   var fx = -Math.sin(S.yaw), fz = -Math.cos(S.yaw);
   var rx = Math.cos(S.yaw), rz = -Math.sin(S.yaw);
@@ -1051,7 +1061,11 @@ function updatePlayer(dt) {
   var len = Math.hypot(mx, mz);
   if (len > 0) {
     mx /= len; mz /= len;
-    var p = collideCircle(camera.position.x + mx * sp * dt, camera.position.z + mz * sp * dt, CFG.playerRadius);
+    // v3.1 analog touch speed: push halfway to walk slowly, full push to run.
+    // Was binary (any deflection moved at full speed) — the main reason the
+    // joystick felt impossible to control. Keyboard input stays at full speed.
+    var analog = (touchMove.x || touchMove.y) ? Math.min(1, Math.hypot(touchMove.x, touchMove.y)) : 1;
+    var p = collideCircle(camera.position.x + mx * sp * dt * analog, camera.position.z + mz * sp * dt * analog, CFG.playerRadius);
     camera.position.x = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[0]));
     camera.position.z = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[1]));
     bobPhase += dt * sp * 1.6;
@@ -1257,13 +1271,20 @@ function pickSpawnPoint(preferVisible) {
   for (var t = 0; t < 40; t++) {
     var sx, sz, dist;
     if (preferVisible && t < 30) {
-      var ang = (Math.random() * 2 - 1) * 0.7; // ±40° forward cone
+      // cone half-angle fits the actual frustum: portrait HFOV is only ~±19°,
+      // so a fixed ±40° cone puts most "visible" spawns off-frame; desktop keeps 0.7
+      var hfovHalf = Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect);
+      var cone = Math.min(0.7, hfovHalf - 0.05);
+      var ang = (Math.random() * 2 - 1) * cone;
       dist = rnd(14, 24);
       var dx = fx * Math.cos(ang) - fz * Math.sin(ang);
       var dz = fx * Math.sin(ang) + fz * Math.cos(ang);
       sx = px + dx * dist; sz = pz + dz * dist;
     } else {
-      var a = rnd(0, Math.PI * 2); dist = rnd(14, 26);
+      // v3.1: non-visible spawns (L1 raider #4 and later waves) cap at 20m,
+      // not 26m — the 4th raider took 21-25s to reach firing range in v3.0
+      // (target <20s in 3/3 runs); still >=14m from the player per the guide
+      var a = rnd(0, Math.PI * 2); dist = rnd(14, 20);
       sx = px + Math.cos(a) * dist; sz = pz + Math.sin(a) * dist;
     }
     if (Math.abs(sx) > CFG.bounds - 2 || Math.abs(sz) > CFG.bounds - 2) continue;
@@ -1370,6 +1391,14 @@ function spawnRaider(type, level) {
     stopRange: cls.stopRange, attackRange: cls.attackRange,
     walkPhase: rnd(0, 6.28), visibleSince: null,
     strafeDir: Math.random() < 0.5 ? 1 : -1, strafeT: rnd(1, 2),
+    // v3.1 move/aim cycle — no more standing still in range (user, on his
+    // iPhone: "lính đứng yên"). holdRange = stop advancing here and start
+    // cycling; band = preferred range while cycling. Runner orbits 8-12m
+    // (holdRange 12, not its 7m stopRange) so it circles instead of yo-yoing.
+    holdRange: type === 'runner' ? 12 : cls.stopRange,
+    band: type === 'runner' ? [8, 12] : (type === 'heavy' ? [8, 12] : [9, 11]),
+    mode: 'move', modeT: rnd(2, 3), // 'move' 2-3s, then 'aim' firing pause
+    flankT: rnd(6, 10), flankHold: 0, // runner: hold one strafe dir to flank
     // unstuck bookkeeping (see updateRaiders): progress window + sidestep side
     progX: spot[0], progZ: spot[1], progT: 0, stuckT: 0, side: 0, sideT: 0
   };
@@ -1383,6 +1412,35 @@ function spawnRaider(type, level) {
   gameState.spawned++; gameState.alive++;
   gsEvent('RAIDER_SPAWNED', { id: id, cls: type, at: spot });
   return r;
+}
+// v3.1: one step of the in-range movement cycle — strafe tangentially
+// (direction flips every 2-4s, or held 3-4s while a runner flanks) while
+// drifting radially toward the class's preferred range band. Uses
+// collideCircle like the advance branch, so containers still block.
+function moveCycle(r, g, dx, dz, dist, dt, factor) {
+  if (r.cls === 'runner') {
+    r.flankT -= dt;
+    if (r.flankT <= 0) { r.flankHold = rnd(3, 4); r.flankT = rnd(6, 10); }
+    if (r.flankHold > 0) r.flankHold -= dt;
+    else { r.strafeT -= dt; if (r.strafeT <= 0) { r.strafeDir *= -1; r.strafeT = rnd(2, 4); } }
+  } else {
+    r.strafeT -= dt;
+    if (r.strafeT <= 0) { r.strafeDir *= -1; r.strafeT = rnd(2, 4); }
+  }
+  var inv = 1 / (dist || 1);
+  var tx = -dz * inv * r.strafeDir, tz = dx * inv * r.strafeDir; // tangential
+  var rad = 0;
+  if (dist > r.band[1]) rad = 0.6; else if (dist < r.band[0]) rad = -0.6;
+  var mx = tx + dx * inv * rad, mz = tz + dz * inv * rad;
+  var ml = Math.hypot(mx, mz) || 1; mx /= ml; mz /= ml;
+  var p = collideCircle(g.position.x + mx * r.speed * factor * dt, g.position.z + mz * r.speed * factor * dt, 0.4);
+  g.position.x = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[0]));
+  g.position.z = Math.max(-CFG.bounds, Math.min(CFG.bounds, p[1]));
+  r.walkPhase += dt * r.speed * factor * 2.4;
+  var sw = Math.sin(r.walkPhase) * 0.55;
+  r.legL.rotation.x = sw; r.legR.rotation.x = -sw;
+  g.position.y = Math.abs(Math.sin(r.walkPhase)) * 0.03;
+  g.rotateX(0.06);
 }
 function updateRaiders(dt) {
   var px = camera.position.x, pz = camera.position.z;
@@ -1399,7 +1457,7 @@ function updateRaiders(dt) {
     // it has a line — but never closer than 1.2m, so it can't clip into
     // the player (a container between them keeps them ~3m apart anyway).
     var losBlocked = segmentBlocked(g.position.x, 1.4, g.position.z, px, 1.5, pz);
-    if (dist > r.stopRange || (dist > 1.2 && losBlocked)) {
+    if (dist > r.holdRange || (dist > 1.2 && losBlocked)) {
       // walk toward the player, blocked by containers like the player is
       var dirx = dx / (dist || 1), dirz = dz / (dist || 1);
       var mx = dirx, mz = dirz;
@@ -1452,21 +1510,28 @@ function updateRaiders(dt) {
       r.legL.rotation.x = sw; r.legR.rotation.x = -sw;
       g.position.y = Math.abs(Math.sin(r.walkPhase)) * 0.03; // step bob
       g.rotateX(0.06); // slight forward lean while advancing (arms stay on the rifle)
+      // entering range starts a fresh MOVE phase, never an aim pause
+      r.mode = 'move'; r.modeT = rnd(2, 3);
     } else {
-      r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8;
-      g.position.y *= 0.8;
-      g.rotateX(0.03); // ready stance
-      if (r.cls === 'runner') {
-        // dock sprinter circles its target instead of standing still
-        r.strafeT -= dt;
-        if (r.strafeT <= 0) { r.strafeDir *= -1; r.strafeT = rnd(1, 2); }
-        var tx = -dz / (dist || 1) * r.strafeDir, tz = dx / (dist || 1) * r.strafeDir;
-        var rp = collideCircle(g.position.x + tx * 1.5 * dt, g.position.z + tz * 1.5 * dt, 0.4);
-        g.position.x = Math.max(-CFG.bounds, Math.min(CFG.bounds, rp[0]));
-        g.position.z = Math.max(-CFG.bounds, Math.min(CFG.bounds, rp[1]));
-        r.walkPhase += dt * 3.5;
-        var sw2 = Math.sin(r.walkPhase) * 0.55;
-        r.legL.rotation.x = sw2; r.legR.rotation.x = -sw2;
+      // v3.1: in range — cycle MOVE (strafe + drift to band, 2-3s) / AIM
+      // (brief firing pause). Nobody stands still and shoots anymore.
+      if (r.mode === 'aim') {
+        r.modeT -= dt;
+        if (r.cls === 'heavy') {
+          // container breaker keeps creeping while it fires — only a ~0.5s
+          // aim pause, never a full stop
+          moveCycle(r, g, dx, dz, dist, dt, 0.45);
+        } else {
+          r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8;
+          g.position.y *= 0.8;
+          g.rotateX(0.03); // ready stance
+        }
+        if (r.modeT <= 0) { r.mode = 'move'; r.modeT = rnd(2, 3); if (Math.random() < 0.5) r.strafeDir *= -1; }
+      } else {
+        // MOVE phase: strafe sideways while drifting toward the band
+        moveCycle(r, g, dx, dz, dist, dt, r.cls === 'runner' ? 0.9 : (r.cls === 'heavy' ? 0.5 : 0.65));
+        r.modeT -= dt;
+        if (r.modeT <= 0) { r.mode = 'aim'; r.modeT = r.cls === 'heavy' ? 0.5 : rnd(0.9, 1.4); }
       }
     }
     // rifle: raise to aim during the telegraph, kick back when firing
@@ -1474,7 +1539,9 @@ function updateRaiders(dt) {
     var aimTilt = r.telegraph > 0 ? -0.08 : 0;
     r.rifle.rotation.x += ((aimTilt - 0.06 * r.recoil) - r.rifle.rotation.x) * Math.min(1, dt * 12);
     r.rifle.position.z = 0.30 - 0.05 * r.recoil;
-    // attack: stop at range, visor flashes during the 0.5s telegraph, then fire
+    // attack: fire only from the AIM pause (v3.1 move/aim cycle) — the
+    // telegraph still completes even if the pause ends mid-aim, so a raider
+    // can shoot on the move as it steps off
     r.attackTimer -= dt;
     if (r.telegraph > 0) {
       r.telegraph -= dt;
@@ -1482,9 +1549,11 @@ function updateRaiders(dt) {
       if (r.telegraph <= 0) {
         raiderFire(r);
         r.visorMat.emissiveIntensity = 2.2;
-        r.attackTimer = r.attackCd * rnd(0.9, 1.25);
+        // second shot inside the same aim pause when there is time for
+        // another 0.5s telegraph (aim 0.9-1.4s); otherwise the normal cooldown
+        r.attackTimer = (r.mode === 'aim' && r.modeT > 0.55) ? 0.3 : r.attackCd * rnd(0.9, 1.25);
       }
-    } else if (r.attackTimer <= 0 && dist < r.attackRange) {
+    } else if (r.attackTimer <= 0 && dist < r.attackRange && r.mode === 'aim') {
       if (!segmentBlocked(g.position.x, 1.4, g.position.z, px, 1.5, pz)) r.telegraph = 0.5;
       else r.attackTimer = 0.6;
     }
@@ -1681,7 +1750,7 @@ function startGame() {
   el.startScreen.style.display = 'none'; el.endScreen.style.display = 'none'; el.pauseScreen.style.display = 'none';
   el.hud.style.display = 'block';
   S.state = 'playing';
-  camera.position.set(0, CFG.eyeHeight, 16); S.yaw = 0; S.pitch = 0;
+  camera.position.set(0, CFG.eyeHeight, 16); S.yaw = -0.5; S.pitch = 0; // spawn fix: face NE diagonal, not the MERIDIAN wall due north — in portrait the wall at z=8 filled the frame and no raider ever had LOS; the NE diagonal is open ground for 14-24m
   updateHUD();
   startLevel(1);
   if (!S.fallback) requestLock();
