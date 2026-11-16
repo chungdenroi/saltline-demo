@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="build-revision" content="v3.0.0-20261116-b">
+<meta name="build-revision" content="v3.0.0-20261116-c">
 <title>SALTLINE DEMO — Single-File Procedural FPS</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -22,6 +22,18 @@
   #hitmark::before, #hitmark::after { content: ""; position: absolute; background: #ff4444; }
   #hitmark::before { left: 50%; top: 0; width: 3px; height: 100%; transform: translateX(-50%); }
   #hitmark::after { top: 50%; left: 0; height: 3px; width: 100%; transform: translateY(-50%); }
+  /* CF feedback (v3.2): killmark + kill feed + damage numbers */
+  #killmark { position: absolute; left: 50%; top: 34%; transform: translate(-50%,-50%); font-size: 38px; font-weight: 900; letter-spacing: 5px; color: #e8b73c; text-shadow: 0 2px 14px rgba(0,0,0,0.9), 0 0 30px rgba(232,183,60,0.5); opacity: 0; transition: opacity 0.15s; white-space: nowrap; pointer-events: none; }
+  #killmark.multi { color: #ff5a3c; text-shadow: 0 2px 14px rgba(0,0,0,0.9), 0 0 30px rgba(255,90,60,0.5); }
+  #killfeed { position: absolute; top: 204px; right: 18px; width: 250px; text-align: right; font-size: 12px; font-weight: bold; letter-spacing: 1px; }
+  #killfeed .feed-row { background: rgba(0,0,0,0.45); border-right: 3px solid #e8b73c; padding: 4px 8px; margin-bottom: 4px; color: #f2ede0; text-shadow: 0 1px 2px #000; transition: opacity 0.3s; }
+  #dmgnums { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .dmgnum { position: absolute; display: none; transform: translate(-50%,-50%); font-size: 16px; font-weight: 900; color: #ffd27a; text-shadow: 0 1px 2px #000, 0 0 8px rgba(0,0,0,0.6); pointer-events: none; white-space: nowrap; }
+  .dmgnum.crit { font-size: 24px; color: #ff6b35; }
+  /* shop on the wave-clear screen (v3.2): score is the currency */
+  .shop-btn { font-size: 15px; padding: 10px 18px; letter-spacing: 1px; }
+  .shop-btn:disabled { opacity: 0.35; }
+  .shop-btn.bought { background: #7fae7f; box-shadow: 0 4px 0 #4a7a4a, 0 8px 24px rgba(0,0,0,0.5); }
   .hud-box { position: absolute; font-size: 15px; letter-spacing: 1px; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
   #topLeft { top: 16px; left: 18px; }
   #topLeft .big { font-size: 22px; font-weight: bold; color: #e8b73c; }
@@ -79,17 +91,33 @@
   #reloadBtn { right: 110px; bottom: 50px; width: 54px; height: 54px; border-color: rgba(216,210,194,0.5); }
   #reloadBtn svg { width: 28px; height: 28px; stroke: #d8d2c2; }
   #reloadBtn:active { background: rgba(216,210,194,0.22); }
+  #nadeBtn { right: 176px; bottom: 40px; width: 54px; height: 54px; }
+  #nadeBtn svg { width: 28px; height: 28px; stroke: #ffd27a; }
+  #nadeBtn:active { background: rgba(255,210,122,0.25); }
+  /* grenade count badge on the button (touch): the GRENADES text line is
+     hidden on touch (below), so the count lives here instead */
+  #nadeBadge { position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; border-radius: 10px; background: #e2b96d; color: #1a1a1a; font-size: 12px; font-weight: bold; line-height: 20px; text-align: center; padding: 0 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+  #swapBtn { right: 110px; bottom: 116px; width: 54px; height: 54px; border-color: rgba(216,210,194,0.5); }
+  #swapBtn svg { width: 28px; height: 28px; stroke: #d8d2c2; }
+  #swapBtn:active { background: rgba(216,210,194,0.22); }
   #touchPauseBtn { left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); width: 44px; height: 44px; font-size: 18px; background: rgba(0,0,0,0.55); color: #f2ede0; border: 1px solid rgba(255,255,255,0.4); }
   #rotateHint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: 86vw; text-align: center; font-size: 13px; color: #ffd27a; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,210,122,0.5); padding: 7px 12px; pointer-events: auto; display: none; white-space: nowrap; }
   #rotateHint button { margin-left: 8px; background: none; border: none; color: #fff; font-size: 14px; cursor: pointer; }
   /* touch: move HUD clear of the on-screen controls + radar */
   body.touch #bottomLeft { bottom: 168px; left: 16px; width: 170px; }
   body.touch #bottomRight { bottom: 128px; right: 16px; }
+  /* touch: hide the two small text lines under the ammo number — the swap
+     button (top 170px from the bottom) sits exactly on top of them, and both
+     lines are desktop key hints ([2] DAO, [G]) that mean nothing on touch.
+     The ammo number alone fits clear of the buttons; the grenade count
+     lives on the nade button badge instead. */
+  body.touch #bottomRight .small { display: none; }
   /* portrait: hint sits BELOW the top HUD row (pause / LEVEL / radar) so it
      never covers them; objective sits above the vitals/ammo row */
   body.touch #rotateHint { top: 112px; left: 64px; right: 112px; transform: none; max-width: none; white-space: normal; }
   body.touch #objective { bottom: 230px; max-width: 86vw; font-size: 13px; padding: 0 12px; }
   body.touch #topLeft { top: max(12px, env(safe-area-inset-top)); left: 64px; }
+  body.touch #killfeed { top: 112px; right: 12px; width: 200px; font-size: 11px; }
   body.touch #topRight { top: 116px; right: max(12px, env(safe-area-inset-right)); }
   body.touch #radar { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 92px; height: 92px; }
   /* touch: dev status line hidden; version sits at the very bottom-left,
@@ -108,6 +136,7 @@
     #bottomRight .big { font-size: 22px; }
     #waveBanner { font-size: 30px; }
     #waveBanner .sub { font-size: 14px; }
+    #killmark { font-size: 26px; letter-spacing: 3px; }
     h2.big { font-size: 36px; }
     .btn { font-size: 18px; padding: 12px 30px; }
     .controls { font-size: 13px; }
@@ -121,12 +150,15 @@
 <div id="hud">
   <div id="crosshair"><div class="dot"></div></div>
   <div id="hitmark"></div>
+  <div id="killmark"></div>
+  <div id="killfeed"></div>
+  <div id="dmgnums"></div>
   <div class="hud-box" id="topLeft"><div class="big" id="waveNum">LEVEL 1</div><div class="small" id="hostilesNum">HOSTILES LEFT: 0</div></div>
   <div class="hud-box" id="topRight"><div class="big" id="scoreNum">0</div><div class="small">SCORE</div></div>
   <canvas id="radar" width="176" height="176"></canvas>
-  <div id="build-version">v3.0.0 · v3.0.0-20261116-b</div>
+  <div id="build-version">v3.0.0 · v3.0.0-20261116-c</div>
   <div class="hud-box" id="bottomLeft"><div class="label">VITALS — <span id="hpNum">100</span> HP</div><div id="hpBarWrap"><div id="hpBar"></div></div></div>
-  <div class="hud-box" id="bottomRight"><div class="big" id="ammoNum">30 / ∞</div><div class="small">PAC-8 LONGSHORE · R TO RELOAD</div></div>
+  <div class="hud-box" id="bottomRight"><div class="big" id="ammoNum">30 / ∞</div><div class="small" id="weaponLine">PAC-8 LONGSHORE · R TO RELOAD</div><div class="small">GRENADES <span id="nadeNum">2</span> · [G]</div></div>
   <div id="reload">⟳ RELOADING…</div>
   <div id="objective"></div>
   <div id="waveBanner"></div>
@@ -137,6 +169,8 @@
   <div id="joyBase"><div id="joyKnob"></div></div>
   <button class="tbtn" id="fireBtn" aria-label="Bắn"><svg viewBox="0 0 40 40" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="20" cy="20" r="12"/><line x1="20" y1="2" x2="20" y2="9"/><line x1="20" y1="31" x2="20" y2="38"/><line x1="2" y1="20" x2="9" y2="20"/><line x1="31" y1="20" x2="38" y2="20"/><circle cx="20" cy="20" r="1.6" fill="#e2b96d" stroke="none"/></svg></button>
   <button class="tbtn" id="reloadBtn" aria-label="Nạp đạn"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><polyline points="20 3 20 8 15 8"/></svg></button>
+  <button class="tbtn" id="nadeBtn" aria-label="Ném lựu đạn"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="14" r="6"/><path d="M13 9l4-4"/><path d="M17 5l2-2"/><path d="M15 7l1.5-1.5"/></svg><span id="nadeBadge">2</span></button>
+  <button class="tbtn" id="swapBtn" aria-label="Đổi vũ khí"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L14 10"/><path d="M14 10l6-6"/><path d="M14 10l3 3"/><path d="M4 20l2-5"/></svg></button>
   <button class="tbtn" id="touchPauseBtn">II</button>
   <div id="rotateHint">Xoay ngang màn hình để chơi thoải mái hơn <button id="rotateDismiss" aria-label="Đóng">✕</button></div>
 </div>
@@ -173,6 +207,16 @@
 <div class="screen" id="endScreen">
   <h2 class="big" id="endTitle">AREA SECURED</h2>
   <div id="endText"></div>
+  <div id="shopPanel" style="display:none">
+    <div class="kicker" style="margin-top:6px">TIỆM ĐỒ — MUA BẰNG ĐIỂM SỐ</div>
+    <div id="shopPoints" style="font-size:15px;color:#e8b73c;letter-spacing:1px;margin-bottom:8px">ĐIỂM: 0</div>
+    <div>
+      <button class="btn shop-btn" data-item="nade">LỰU ĐẠN ×2 — 150</button>
+      <button class="btn shop-btn" data-item="armor">GIÁP −25% DMG — 200</button>
+      <button class="btn shop-btn" data-item="heal">HỒI MÁU ĐẦY — 100</button>
+      <button class="btn shop-btn" data-item="dmg">SÚNG +20% DMG — 250</button>
+    </div>
+  </div>
   <div>
     <button class="btn" id="nextBtn">NEXT LEVEL ▶</button>
     <button class="btn" id="retryBtn" style="display:none">↻ TRY AGAIN</button>
@@ -243,7 +287,7 @@ function levelMultipliers(level) {
 /* ---------- build fingerprint (v3.0, GPT guide §7.1) ----------
    Revision changes on every deploy — it is the cache-proof identity of the
    build the player actually loaded (more useful than the version alone). */
-var BUILD = { version: '3.0.0', revision: 'v3.0.0-20261116-b', builtAt: '2026-11-16T14:53:50+07:00' };
+var BUILD = { version: '3.0.0', revision: 'v3.0.0-20261116-c', builtAt: '2026-11-16T16:16:00+07:00' };
 if (window.console && console.info) console.info('[BUILD]', BUILD.revision);
 
 /* ---------- wave state machine + spawn accounting (GPT guide §7.2) ----------
@@ -281,6 +325,7 @@ function newEnemyId() {
 var _qs = (function () { try { return new URLSearchParams(window.location.search); } catch (e) { return { get: function () { return null; } }; } })();
 var debugOn = _qs.get('debug') === '1';
 var radarDots = 0; // last radar dot count (written by drawRadar)
+var radarFar = 0; // of those, how many are clamped to the 18m ring edge (v3.2)
 var _frustum = new THREE.Frustum();
 var _projView = new THREE.Matrix4();
 var _tmpV = new THREE.Vector3();
@@ -317,6 +362,9 @@ window.__saltlineDebug = {
   get sceneEnemies() { return countSceneEnemies(); },
   get visibleEnemies() { return countVisibleEnemies(); },
   get radarDots() { return radarDots; },
+  get radarFar() { return radarFar; },
+  get hp() { return S.hp; },
+  get maxHp() { return S.maxHp; },
   get lastEvent() { return gameState.lastEvent; },
   get score() { return S.score; },
   get events() { return gameState.events.slice(-10).map(function (e) { return e.t + ' ' + e.name; }); }
@@ -338,12 +386,15 @@ function setDebug(on) {
 if (debugOn) setDebug(true);
 var S = {
   state: 'menu', // menu | playing | paused | waveclear | gameover
-  hp: 100, maxHp: 100, score: 0, level: 0, ammo: CFG.magSize,
+  hp: 200, maxHp: 200, score: 0, level: 0, ammo: CFG.magSize,
   reloading: false, reloadEnd: 0, lastShot: 0, firing: false,
   yaw: 0, pitch: 0, keys: {}, fallback: false, dragging: false,
   lastDamageAt: -99, time: 0, kills: 0, levelKills: 0, autoStart: false,
   shotsFired: 0, shotsHit: 0, // per level, for the wave-clear accuracy line
-  levelStartTime: 0, levelRewarded: false
+  levelStartTime: 0, levelRewarded: false,
+  weapon: 'rifle', grenades: 2, meleeCd: 0, knifeSwing: 0, // v3.2: rifle/knife + grenades
+  armor: false, dmgBoost: false, shopArmor: false, shopDmg: false, // v3.2 shop buffs (last one level)
+  shakeT: 0, killStreak: 0, lastKillAt: -99 // v3.2: CF streaks + explosion shake
 };
 
 /* ---------- touch detection: one file, one link, auto mobile/desktop ---------- */
@@ -617,6 +668,71 @@ laneX.forEach(function (lx, li) {
 addContainer(-6, -32, Math.PI / 2, 1, false); addContainer(6, -32, Math.PI / 2, 3, false);
 addContainer(-18, -2, Math.PI / 2, 4, false); addContainer(18, 4, Math.PI / 2, 0, true);
 
+/* ---------- parked cars (v3.2): procedural cover in the lane gaps ----------
+   Same AABB collision + LOS rules as containers (they go through the same
+   colliders list, so radar, pathing and bullet raycasts all see them for
+   free). NOT drivable in v3.2 — cover only; driving is a later version. */
+var cars = [];
+function carTexture(base, label) {
+  return canvasTex(256, 128, function (g, w, h) {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    for (var i = 0; i < 90; i++) { // grime + rust streaks
+      g.fillStyle = 'rgba(40,26,14,' + (0.1 + Math.random() * 0.25) + ')';
+      g.fillRect(Math.random() * w, Math.random() * h, 2 + Math.random() * 10, 1 + Math.random() * 3);
+    }
+    g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 2;
+    g.strokeRect(w * 0.08, h * 0.15, w * 0.84, h * 0.7);
+    g.beginPath(); g.moveTo(w * 0.3, 0); g.lineTo(w * 0.3, h); g.moveTo(w * 0.62, 0); g.lineTo(w * 0.62, h); g.stroke();
+    g.fillStyle = 'rgba(230,220,200,0.85)'; g.font = 'bold 20px monospace'; g.textAlign = 'center';
+    g.fillText(label, w / 2, h * 0.55);
+  }, [1, 1]);
+}
+function addCar(x, z, rotY, type) {
+  var spec = {
+    sedan: { len: 4.4, wid: 1.8, bodyH: 0.62, cabH: 0.5, color: '#7a3a28', label: 'SAL 204' },
+    pickup: { len: 5.0, wid: 2.0, bodyH: 0.7, cabH: 0.55, color: '#2a4d6b', label: 'SAL 117' },
+    van: { len: 5.0, wid: 2.0, bodyH: 1.5, cabH: 0.6, color: '#5d6b3a', label: 'SAL 330' }
+  }[type] || { len: 4.4, wid: 1.8, bodyH: 0.62, cabH: 0.5, color: '#7a3a28', label: 'SAL 204' };
+  var g = new THREE.Group();
+  var bodyMat = new THREE.MeshStandardMaterial({ map: carTexture(spec.color, spec.label), roughness: 0.5, metalness: 0.4, envMapIntensity: 0.7 });
+  var glassMat = new THREE.MeshStandardMaterial({ color: 0x0e1418, roughness: 0.15, metalness: 0.8, envMapIntensity: 1.2 });
+  var darkMat = new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.9, metalness: 0.1 });
+  var body = new THREE.Mesh(new THREE.BoxGeometry(spec.wid, spec.bodyH, spec.len), bodyMat);
+  body.position.y = 0.45 + spec.bodyH / 2; body.castShadow = true; g.add(body);
+  var cabLen = type === 'van' ? spec.len * 0.85 : spec.len * 0.45;
+  var cab = new THREE.Mesh(new THREE.BoxGeometry(spec.wid * 0.86, spec.cabH, cabLen), type === 'pickup' ? bodyMat : glassMat);
+  cab.position.set(0, 0.45 + spec.bodyH + spec.cabH / 2, type === 'van' ? 0 : -spec.len * 0.12);
+  cab.castShadow = true; g.add(cab);
+  if (type === 'pickup') { // open bed: low tailgate + side rails at the rear
+    var rail = new THREE.BoxGeometry(0.08, 0.3, spec.len * 0.42);
+    var r1 = new THREE.Mesh(rail, bodyMat); r1.position.set(-spec.wid / 2 + 0.04, 0.45 + spec.bodyH + 0.15, spec.len * 0.26); g.add(r1);
+    var r2 = new THREE.Mesh(rail, bodyMat); r2.position.set(spec.wid / 2 - 0.04, 0.45 + spec.bodyH + 0.15, spec.len * 0.26); g.add(r2);
+    var tg = new THREE.Mesh(new THREE.BoxGeometry(spec.wid, 0.3, 0.08), bodyMat);
+    tg.position.set(0, 0.45 + spec.bodyH + 0.15, spec.len * 0.47); g.add(tg);
+  }
+  var wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 12);
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (w) {
+    var wh = new THREE.Mesh(wheelGeo, darkMat);
+    wh.rotation.z = Math.PI / 2;
+    wh.position.set(w[0] * (spec.wid / 2 - 0.05), 0.34, w[1] * (spec.len / 2 - 0.8));
+    g.add(wh);
+  });
+  g.position.set(x, 0, z); g.rotation.y = rotY || 0;
+  scene.add(g);
+  var c = Math.abs(Math.cos(rotY || 0)), s = Math.abs(Math.sin(rotY || 0));
+  addCollider(x, z, (spec.wid * c + spec.len * s) / 2 + 0.1, (spec.wid * s + spec.len * c) / 2 + 0.1);
+  cars.push({ group: g, type: type, x: x, z: z });
+  return g;
+}
+// lane gaps (checked against the container colliders above): sedan in the
+// -12 lane gap, pickup mid-lane 0, van in the +12 lane gap, sedan south-west
+// of the player spawn, pickup east — none inside the L1 spawn-in-sight cone
+addCar(-12, 8, 0, 'sedan');
+addCar(0, -4, 0, 'pickup');
+addCar(12, -14, 0, 'van');
+addCar(-6, 24, 0.3, 'sedan');
+addCar(18, -2, Math.PI / 2, 'pickup');
+
 /* gantry crane (boxes) straddling lane 0 */
 (function () {
   var mat = new THREE.MeshStandardMaterial({ color: 0xd8a020, roughness: 0.6, metalness: 0.5, envMapIntensity: 0.6 });
@@ -757,6 +873,25 @@ var flash = new THREE.Sprite(flashMat); flash.scale.set(0.001, 0.001, 1); flash.
 var flashLight = new THREE.PointLight(0xffc36a, 0, 14, 2); flashLight.position.set(0, 0, -0.8); gun.add(flashLight);
 var flashUntil = 0;
 
+/* ---------- knife viewmodel (v3.2): procedural blade + handle, low right ---------- */
+var knife = new THREE.Group();
+(function () {
+  var steel = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.25, metalness: 0.9, envMapIntensity: 1.0 });
+  var gripM = new THREE.MeshStandardMaterial({ color: 0x1c1a17, roughness: 0.9, metalness: 0.1 });
+  var blade = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.008, 0.30), steel);
+  blade.position.set(0, 0.01, -0.18); knife.add(blade);
+  var tip = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.07, 4), steel);
+  tip.rotation.x = -Math.PI / 2; tip.rotation.y = Math.PI / 4; tip.position.set(0, 0.01, -0.365); knife.add(tip);
+  var guard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.03), steel);
+  guard.position.set(0, 0.005, -0.02); knife.add(guard);
+  var handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.14), gripM);
+  handle.position.set(0, 0, 0.06); knife.add(handle);
+  knife.position.set(0.30, -0.28, -0.45);
+  knife.rotation.set(0.15, -0.25, 0.1);
+  knife.visible = false;
+  camera.add(knife);
+})();
+
 /* ---------- input: pointer lock + drag fallback + arrows/IJKL ---------- */
 var canvas = renderer.domElement;
 var keys = S.keys;
@@ -823,6 +958,9 @@ window.addEventListener('keydown', function (e) {
   keys[e.code] = true;
   if (e.code === 'F3') { e.preventDefault(); setDebug(!debugOn); return; }
   if (e.code === 'KeyR') startReload();
+  if (e.code === 'KeyG') throwGrenade();
+  if (e.code === 'Digit1') switchWeapon('rifle');
+  if (e.code === 'Digit2') switchWeapon('knife');
   if (e.code === 'KeyP') cycleQuality();
   if (e.code === 'Escape' && S.state === 'playing' && (S.fallback || document.pointerLockElement !== canvas)) pauseGame();
   if (e.code === 'Enter' && S.state === 'waveclear') nextLevel();
@@ -858,6 +996,8 @@ var joyKnob = document.getElementById('joyKnob');
 var fireBtn = document.getElementById('fireBtn');
 var reloadBtn = document.getElementById('reloadBtn');
 var touchPauseBtn = document.getElementById('touchPauseBtn');
+var nadeBtn = document.getElementById('nadeBtn');
+var swapBtn = document.getElementById('swapBtn');
 var rotateHint = document.getElementById('rotateHint');
 var rotateDismissBtn = document.getElementById('rotateDismiss');
 var rotateDismissed = false;
@@ -966,6 +1106,8 @@ if (IS_TOUCH) {
   }
   if (reloadBtn) reloadBtn.addEventListener('touchstart', function (e) { e.preventDefault(); startReload(); }, { passive: false });
   if (touchPauseBtn) touchPauseBtn.addEventListener('touchstart', function (e) { e.preventDefault(); pauseGame(); }, { passive: false });
+  if (nadeBtn) nadeBtn.addEventListener('touchstart', function (e) { e.preventDefault(); throwGrenade(); }, { passive: false });
+  if (swapBtn) swapBtn.addEventListener('touchstart', function (e) { e.preventDefault(); switchWeapon(S.weapon === 'knife' ? 'rifle' : 'knife'); }, { passive: false });
   // mouse support for the same buttons + joystick: lets ?touch=1 be played
   // and tested on a desktop with a real mouse. Real touch devices fire
   // synthesized mouse events after touchend — ignore those (the touchstart
@@ -979,6 +1121,8 @@ if (IS_TOUCH) {
   }
   if (reloadBtn) reloadBtn.addEventListener('click', function (e) { if (isSynthMouse(e)) return; startReload(); });
   if (touchPauseBtn) touchPauseBtn.addEventListener('click', function (e) { if (isSynthMouse(e)) return; pauseGame(); });
+  if (nadeBtn) nadeBtn.addEventListener('click', function (e) { if (isSynthMouse(e)) return; throwGrenade(); });
+  if (swapBtn) swapBtn.addEventListener('click', function (e) { if (isSynthMouse(e)) return; switchWeapon(S.weapon === 'knife' ? 'rifle' : 'knife'); });
   if (joyBase) {
     var joyMouse = false;
     joyBase.addEventListener('mousedown', function (e) {
@@ -1045,7 +1189,7 @@ function updatePlayer(dt) {
   var sprint = (keys.ShiftLeft || keys.ShiftRight) ? CFG.sprintMul : 1;
   // touch joystick pushed past 80% = sprint (no Shift key on mobile; was 92%)
   if ((touchMove.mag || 0) > 0.80) sprint = CFG.sprintMul;
-  var sp = CFG.playerSpeed * sprint;
+  var sp = CFG.playerSpeed * sprint * (S.weapon === 'knife' ? 1.15 : 1); // knife: +15% move speed
   var fx = -Math.sin(S.yaw), fz = -Math.cos(S.yaw);
   var rx = Math.cos(S.yaw), rz = -Math.sin(S.yaw);
   var mx = 0, mz = 0;
@@ -1071,19 +1215,51 @@ function updatePlayer(dt) {
     bobPhase += dt * sp * 1.6;
   }
   camera.position.y = CFG.eyeHeight + Math.sin(bobPhase) * (len > 0 ? 0.035 : 0);
-  camera.rotation.set(S.pitch, S.yaw, 0);
-  // health regen after 6s without damage
-  if (S.hp > 0 && S.hp < S.maxHp && S.time - S.lastDamageAt > 6) {
+  // v3.2 recoil (Gemini numbers, CF law): each shot adds +0.035 rad of camera
+  // pitch, stacking to +0.12 max while holding fire; it relaxes back over
+  // ~200ms once firing stops. Visual only — S.pitch is untouched, so the
+  // player's stored aim never drifts. The roll whisper stays tiny on purpose:
+  // a hard shake on a phone screen causes motion sickness.
+  camera.rotation.set(S.pitch + recoilPitch, S.yaw, (Math.random() - 0.5) * 0.004 * recoil);
+  // bloom (CF spray state): grows per shot, resets ~0.4s after the last shot;
+  // the crosshair blooms to 1.8x at full bloom (Gemini) and the shot cone
+  // follows the same value (see shoot()).
+  if (S.time - S.lastShot > 0.1) {
+    recoilPitch = Math.max(0, recoilPitch - dt * 0.6);
+    bloom = Math.max(0, bloom - dt * 2.5);
+  }
+  if (crossEl) crossEl.style.transform = 'translate(-50%,-50%) scale(' + (1 + bloom * 0.8).toFixed(3) + ')';
+  // explosion shake (slight — a hard shake on a phone screen causes sickness)
+  if (S.shakeT > 0) {
+    S.shakeT -= dt;
+    var sh = (S.shakeT / 0.35) * 0.008;
+    camera.rotation.x += (Math.random() - 0.5) * sh;
+    camera.rotation.y += (Math.random() - 0.5) * sh;
+  }
+  // knife swing: horizontal sweep while knifeSwing decays (~0.3s)
+  if (knife.visible) {
+    S.knifeSwing = Math.max(0, S.knifeSwing - dt * 3.5);
+    knife.rotation.y = -0.25 + (S.knifeSwing - 0.5) * 1.6;
+    knife.position.x = 0.30 + (0.5 - S.knifeSwing) * 0.18;
+    knife.position.y = -0.28 - Math.sin(S.knifeSwing * Math.PI) * 0.04;
+  }
+  // health regen (parent decision, overrides Gemini's 150 HP): 200 HP pool,
+  // +5 HP/s after 3s without damage; raider damage stays -8 (v3.1 already
+  // halved their real DPS with burst fire, so no further damage cut)
+  if (S.hp > 0 && S.hp < S.maxHp && S.time - S.lastDamageAt > 3) {
     S.hp = Math.min(S.maxHp, S.hp + 5 * dt);
     updateHUD();
   }
-  // gun sway + recoil recovery
-  gun.position.z = -0.5 + recoil * 0.06;
-  gun.position.y = -0.23 + Math.sin(bobPhase * 0.5) * (len > 0 ? 0.004 : 0);
-  gun.rotation.x = recoil * 0.06;
-  recoil = Math.max(0, recoil - dt * 7);
+  // gun sway + recoil recovery (v3.2: kick roughly doubled, recovers in ~110ms)
+  gun.position.z = -0.5 + recoil * 0.09;
+  gun.position.y = -0.23 + Math.sin(bobPhase * 0.5) * (len > 0 ? 0.004 : 0) + recoil * 0.02;
+  gun.rotation.x = recoil * 0.09;
+  recoil = Math.max(0, recoil - dt * 9);
 }
 var recoil = 0;
+var recoilPitch = 0; // accumulated camera pitch kick, 0..0.12 rad (Gemini)
+var bloom = 0; // CF spray state, 0..1 — drives crosshair scale + shot cone
+var crossEl = document.getElementById('crosshair');
 
 /* ---------- particles & tracers ---------- */
 var P_MAX = 500;
@@ -1123,25 +1299,49 @@ function updateParticles(dt) {
   pGeo.attributes.position.needsUpdate = true;
   pGeo.attributes.color.needsUpdate = true;
 }
+/* v3.2 tracers: the old THREE.Line beam is 1px wide — invisible on a 390px
+   phone screen. Each tracer is now a stretched cylinder with a bright core
+   (pale, ~1.2cm) inside a wider additive glow sheath (~4.5cm, shot colour),
+   so the shot reads as a glowing streak from any angle. One shared unit
+   geometry for all 20; per-tracer materials only because opacity fades
+   independently. Same spawnTracer() signature, so shoot() and raider fire
+   need no changes. */
 var tracers = [];
-for (var ti = 0; ti < 8; ti++) {
-  var tg = new THREE.BufferGeometry();
-  tg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-  var tl = new THREE.Line(tg, new THREE.LineBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0 }));
-  tl.frustumCulled = false; scene.add(tl);
-  tracers.push({ line: tl, life: 0 });
+var tracerGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+var _tracerUp = new THREE.Vector3(0, 1, 0);
+var _tracerDir = new THREE.Vector3();
+for (var ti = 0; ti < 20; ti++) { // Gemini: pool of 20 tracers
+  var tCore = new THREE.Mesh(tracerGeo, new THREE.MeshBasicMaterial({ color: 0xfff2cc, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  var tGlow = new THREE.Mesh(tracerGeo, new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  tCore.frustumCulled = false; tGlow.frustumCulled = false;
+  tCore.visible = false; tGlow.visible = false;
+  scene.add(tCore); scene.add(tGlow);
+  tracers.push({ core: tCore, glow: tGlow, life: 0 });
 }
 function spawnTracer(x1, y1, z1, x2, y2, z2, color) {
   var t = tracers.find(function (x) { return x.life <= 0; }) || tracers[0];
-  var a = t.line.geometry.attributes.position.array;
-  a[0] = x1; a[1] = y1; a[2] = z1; a[3] = x2; a[4] = y2; a[5] = z2;
-  t.line.geometry.attributes.position.needsUpdate = true;
-  t.line.material.color.setHex(color);
-  t.line.material.opacity = 0.9; t.life = 0.08;
+  _tracerDir.set(x2 - x1, y2 - y1, z2 - z1);
+  var len = _tracerDir.length() || 0.001;
+  _tracerDir.divideScalar(len);
+  [t.core, t.glow].forEach(function (m) {
+    m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+    m.quaternion.setFromUnitVectors(_tracerUp, _tracerDir);
+    m.visible = true;
+  });
+  t.core.scale.set(0.012, len, 0.012);
+  t.glow.scale.set(0.045, len, 0.045);
+  t.glow.material.color.setHex(color);
+  t.core.material.opacity = 1; t.glow.material.opacity = 0.45;
+  t.life = 0.08;
 }
 function updateTracers(dt) {
   tracers.forEach(function (t) {
-    if (t.life > 0) { t.life -= dt; t.line.material.opacity = Math.max(0, t.life / 0.08) * 0.9; }
+    if (t.life > 0) {
+      t.life -= dt;
+      var f = Math.max(0, t.life / 0.08);
+      t.core.material.opacity = f; t.glow.material.opacity = 0.45 * f;
+      if (t.life <= 0) { t.core.visible = false; t.glow.visible = false; }
+    }
   });
 }
 
@@ -1168,6 +1368,7 @@ function segmentBlocked(x1, y1, z1, x2, y2, z2) {
 }
 function damagePlayer(amount, src) {
   if (S.state !== 'playing' || S.hp <= 0) return;
+  if (S.armor) amount = Math.round(amount * 0.75); // shop armor: -25% damage taken
   S.hp = Math.max(0, S.hp - amount);
   S.lastDamageAt = S.time;
   sfx.hurt();
@@ -1189,11 +1390,14 @@ var dyingRaiders = []; // {group, t} — fall + sink animation after death
    the container textures, so raiders belong to the same wet-port world.
    Palette: rain-soaked olive/grey, no bright arcade blue. ---------- */
 function makeRaiderTexture(kind, seed) {
+  // v3.2 CF palette (Gemini + research agree: WARM enemy tones on the COLD
+  // port background): Olive Drab #4B5320 + tan desert camo, charcoal vest,
+  // gunmetal rifle. The old olive-grey read as "port worker", not "soldier".
   var palettes = {
-    uniform: ['#4B5747', '#69735A'],
-    dark: ['#343E38', '#566057'],
-    vest: ['#354239', '#78816B'],
-    helmet: ['#53624E', '#82785C'],
+    uniform: ['#4B5320', '#8A7B52'],
+    dark: ['#2F4F4F', '#4B5320'],
+    vest: ['#2F4F4F', '#556B2F'],
+    helmet: ['#4B5320', '#3A3F2A'],
     rifle: ['#20292B', '#66706D']
   };
   var pal = palettes[kind] || palettes.uniform;
@@ -1234,24 +1438,30 @@ var raiderTex = {
 // 4 shared materials for ALL raiders — no new texture is ever made per spawn
 var raiderUniformMat = new THREE.MeshStandardMaterial({ map: raiderTex.uniform, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.55 });
 var raiderVestMat = new THREE.MeshStandardMaterial({ map: raiderTex.vest, roughness: 0.85, metalness: 0.05, envMapIntensity: 0.5 });
-var raiderHelmetMat = new THREE.MeshStandardMaterial({ map: raiderTex.helmet, roughness: 0.8, metalness: 0.1, envMapIntensity: 0.5 });
+var raiderHelmetMat = new THREE.MeshStandardMaterial({ map: raiderTex.helmet, roughness: 0.75, metalness: 0.25, envMapIntensity: 0.5 });
 var raiderRifleMat = new THREE.MeshStandardMaterial({ map: raiderTex.rifle, roughness: 0.45, metalness: 0.7, envMapIntensity: 0.6 });
+var raiderBootMat = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.9, metalness: 0.05 }); // black combat boots (Gemini)
+var raiderBandMat = new THREE.MeshStandardMaterial({ color: 0x8f1f0e, emissive: 0xC7432B, emissiveIntensity: 0.7 }); // runner headband — bright class accent
 var raiderMarkMat = new THREE.MeshStandardMaterial({ color: 0x331100, emissive: 0xE16C45, emissiveIntensity: 1.0 });
 var raiderVisorBase = new THREE.MeshStandardMaterial({ color: 0x221100, emissive: 0xFF9C62, emissiveIntensity: 2.2 });
 // shared geometries (one set for all raiders)
+// v3.2 (Gemini C): ~1.75m soldier — small head (r=0.14), broad 0.5m shoulders
+// + thick plate carrier = inverted-T/V silhouette; slim legs, black boots
 var raiderTorsoGeo = new THREE.CylinderGeometry(0.26, 0.20, 0.66, 12); // chest -> waist taper
-var raiderHeadGeo = new THREE.SphereGeometry(0.155, 18, 14);            // helmet dome
+var raiderHeadGeo = new THREE.SphereGeometry(0.14, 18, 14);             // helmet dome, r=0.14
 var raiderLegGeo = new THREE.CylinderGeometry(0.085, 0.058, 0.76, 10);  // thigh -> ankle taper
-var raiderArmGeo = new THREE.CylinderGeometry(0.06, 0.048, 0.56, 10);   // left arm, near-straight reach
-var raiderArmShortGeo = new THREE.CylinderGeometry(0.06, 0.048, 0.48, 10); // right arm, bent at elbow
+var raiderArmGeo = new THREE.CylinderGeometry(0.06, 0.048, 0.56, 10);   // (legacy single-arm, kept for forearms via scale.y)
+var raiderArmShortGeo = new THREE.CylinderGeometry(0.06, 0.048, 0.48, 10); // forearm stock (scaled to fit)
+var raiderUpperArmGeo = new THREE.CylinderGeometry(0.06, 0.052, 0.30, 10); // upper arm: shoulder -> elbow
 var raiderPadGeo = new THREE.SphereGeometry(0.11, 12, 8);
 var raiderGloveGeo = new THREE.SphereGeometry(0.055, 10, 8);
 var raiderBootGeo = new THREE.BoxGeometry(0.13, 0.09, 0.27);
 var raiderKneeGeo = new THREE.SphereGeometry(0.07, 10, 8);
-var raiderPlateGeo = new THREE.BoxGeometry(0.34, 0.38, 0.07);
+var raiderPlateGeo = new THREE.BoxGeometry(0.38, 0.40, 0.10); // thick plate carrier
 var raiderPackGeo = new THREE.BoxGeometry(0.36, 0.44, 0.15);
-var raiderVisorGeo = new THREE.CylinderGeometry(0.158, 0.158, 0.05, 18, 1, true, -0.85, 1.7); // curved band, front of helmet
-var raiderFaceGeo = new THREE.CylinderGeometry(0.16, 0.15, 0.13, 14, 1, true, -0.65, 1.3);   // mandible guard
+var raiderVisorGeo = new THREE.CylinderGeometry(0.143, 0.143, 0.05, 18, 1, true, -0.85, 1.7); // curved band, front of helmet
+var raiderFaceGeo = new THREE.CylinderGeometry(0.145, 0.135, 0.13, 14, 1, true, -0.65, 1.3);   // mandible guard
+var RIFLE_BASE_PITCH = -0.35; // rifle pitched up ~20 deg (CF diagonal-across-chest pose); updateRaiders lerps rotation.x around this, never toward 0
 var RAIDER_SPAWNS = [[-12, -34], [0, -34], [12, -34], [-12, 34], [0, 34], [12, 34]]; // open lane ends, clear of containers
 /* ---------- spawn point picker (GPT guide §7.3) ----------
    Level 1: the first 3 raiders spawn in the player's view (14–24 units,
@@ -1305,9 +1515,9 @@ function spawnRaider(type, level) {
   var torso = new THREE.Mesh(raiderTorsoGeo, raiderUniformMat);
   torso.scale.set(1, 1, 0.62); torso.position.y = 1.11; torso.castShadow = true; g.add(torso);
   // plate carrier front + back, amber chest tape (same amber as the visor)
-  var plateF = new THREE.Mesh(raiderPlateGeo, raiderVestMat); plateF.position.set(0, 1.16, 0.175); plateF.castShadow = true; g.add(plateF);
-  var plateB = new THREE.Mesh(raiderPlateGeo, raiderVestMat); plateB.position.set(0, 1.16, -0.175); g.add(plateB);
-  var tape = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.025, 0.012), raiderMarkMat); tape.position.set(0, 1.32, 0.215); g.add(tape);
+  var plateF = new THREE.Mesh(raiderPlateGeo, raiderVestMat); plateF.position.set(0, 1.16, 0.19); plateF.castShadow = true; g.add(plateF);
+  var plateB = new THREE.Mesh(raiderPlateGeo, raiderVestMat); plateB.position.set(0, 1.16, -0.19); g.add(plateB);
+  var tape = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.025, 0.012), raiderMarkMat); tape.position.set(0, 1.32, 0.245); g.add(tape);
   // belt + pouch, backpack + bedroll, shoulder pads
   var belt = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.08, 12), raiderVestMat);
   belt.scale.set(1, 1, 0.62); belt.position.y = 0.83; g.add(belt);
@@ -1317,27 +1527,37 @@ function spawnRaider(type, level) {
   roll.rotation.z = Math.PI / 2; roll.position.set(0, 1.43, -0.25); g.add(roll);
   var padL = new THREE.Mesh(raiderPadGeo, raiderVestMat); padL.scale.set(1, 0.55, 1); padL.position.set(-0.30, 1.43, 0); g.add(padL);
   var padR = new THREE.Mesh(raiderPadGeo, raiderVestMat); padR.scale.set(1, 0.55, 1); padR.position.set(0.30, 1.43, 0); g.add(padR);
+  // class silhouette (CF): heavy = bigger shoulder armor; runner = slimmer
+  // pads + bright headband so the class reads at 15m without any detail
+  if (type === 'heavy') { padL.scale.set(1.35, 0.7, 1.35); padR.scale.set(1.35, 0.7, 1.35); }
+  else if (type === 'runner') { padL.scale.set(0.8, 0.45, 0.8); padR.scale.set(0.8, 0.45, 0.8); }
   // neck, helmet dome (hit mesh) + brim, mandible guard, curved amber visor
   var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 10), raiderVestMat); neck.position.y = 1.47; g.add(neck);
   var visorMat = raiderVisorBase.clone(); // per-raider so the telegraph flash is independent
   var head = new THREE.Mesh(raiderHeadGeo, raiderHelmetMat); head.position.y = 1.62; head.castShadow = true; g.add(head);
-  var brim = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.168, 0.025, 18), raiderHelmetMat); brim.position.y = 1.615; g.add(brim);
+  var brim = new THREE.Mesh(new THREE.CylinderGeometry(0.152, 0.152, 0.025, 18), raiderHelmetMat); brim.position.y = 1.615; g.add(brim);
   var face = new THREE.Mesh(raiderFaceGeo, raiderHelmetMat); face.position.y = 1.545; g.add(face);
   var visor = new THREE.Mesh(raiderVisorGeo, visorMat); visor.position.y = 1.63; g.add(visor);
+  if (type === 'runner') { // bright headband — the runner's class marker
+    var band = new THREE.Mesh(new THREE.CylinderGeometry(0.148, 0.148, 0.045, 18, 1, true), raiderBandMat);
+    band.position.y = 1.66; g.add(band);
+  }
   // legs pivot at the hip so they swing while walking (tapered + knee pad + boot)
   var legL = new THREE.Group(); legL.position.set(-0.13, 0.78, 0);
   var legLMesh = new THREE.Mesh(raiderLegGeo, raiderUniformMat); legLMesh.position.y = -0.38; legLMesh.castShadow = true; legL.add(legLMesh);
   var kneeL = new THREE.Mesh(raiderKneeGeo, raiderVestMat); kneeL.scale.set(1, 1, 0.6); kneeL.position.set(0, -0.38, 0.075); legL.add(kneeL);
-  var bootL = new THREE.Mesh(raiderBootGeo, raiderVestMat); bootL.position.set(0, -0.735, 0.05); legL.add(bootL);
+  var bootL = new THREE.Mesh(raiderBootGeo, raiderBootMat); bootL.position.set(0, -0.735, 0.05); legL.add(bootL);
   g.add(legL);
   var legR = new THREE.Group(); legR.position.set(0.13, 0.78, 0);
   var legRMesh = new THREE.Mesh(raiderLegGeo, raiderUniformMat); legRMesh.position.y = -0.38; legRMesh.castShadow = true; legR.add(legRMesh);
   var kneeR = new THREE.Mesh(raiderKneeGeo, raiderVestMat); kneeR.scale.set(1, 1, 0.6); kneeR.position.set(0, -0.38, 0.075); legR.add(kneeR);
-  var bootR = new THREE.Mesh(raiderBootGeo, raiderVestMat); bootR.position.set(0, -0.735, 0.05); legR.add(bootR);
+  var bootR = new THREE.Mesh(raiderBootGeo, raiderBootMat); bootR.position.set(0, -0.735, 0.05); legR.add(bootR);
   g.add(legR);
-  // rifle — built once, held at chest height pointing forward (+z); arms are
-  // posed onto it below, so the whole assembly stays rigid while walking
-  var rifle = new THREE.Group(); rifle.position.set(0, 1.30, 0.30);
+  // rifle — v3.2 CF pose: yawed ~26 deg + pitched up ~20 deg, so from the
+  // front the barrel reads as a dark diagonal across the chest (the old
+  // straight-forward pose foreshortened to a dot, and the arms read T-pose).
+  var rifle = new THREE.Group(); rifle.position.set(0, 1.28, 0.30);
+  rifle.rotation.set(RIFLE_BASE_PITCH, 0.45, 0);
   var receiver = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.36), raiderRifleMat); receiver.castShadow = true; rifle.add(receiver);
   var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.30, 8), raiderRifleMat);
   barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.01, 0.30); rifle.add(barrel);
@@ -1350,18 +1570,34 @@ function spawnRaider(type, level) {
   var sight = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.12), raiderRifleMat); sight.position.set(0, 0.09, -0.03); rifle.add(sight);
   var muzzleTip = new THREE.Object3D(); muzzleTip.position.set(0, 0.01, 0.47); rifle.add(muzzleTip);
   g.add(rifle);
-  // arms pivot at the shoulder; aim each arm's -y axis straight at its grip point
-  // (right hand -> pistol grip, left hand -> handguard) so the gloves land on the rifle
-  var armL = new THREE.Group(); armL.position.set(-0.32, 1.44, 0.02);
-  var armLMesh = new THREE.Mesh(raiderArmGeo, raiderUniformMat); armLMesh.position.y = -0.28; armL.add(armLMesh);
-  var gloveL = new THREE.Mesh(raiderGloveGeo, raiderVestMat); gloveL.position.y = -0.56; armL.add(gloveL);
-  armL.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0.32, -0.135, 0.45).normalize());
-  g.add(armL);
-  var armR = new THREE.Group(); armR.position.set(0.32, 1.44, 0.02);
-  var armRMesh = new THREE.Mesh(raiderArmShortGeo, raiderUniformMat); armRMesh.position.y = -0.24; armR.add(armRMesh);
-  var gloveR = new THREE.Mesh(raiderGloveGeo, raiderVestMat); gloveR.position.y = -0.48; armR.add(gloveR);
-  armR.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(-0.32, -0.25, 0.17).normalize());
-  g.add(armR);
+  // arms — v3.2 CF pose, NO T-pose: each arm is TWO segments. The upper arm
+  // hangs down-forward from the shoulder (reads vertical from the front);
+  // the forearm reaches from the elbow to its grip point on the rifle
+  // (left hand -> handguard, right hand -> pistol grip), so both gloves land
+  // on the weapon and the elbows stay bent and tucked. Grip points come
+  // straight from the rifle's own matrix, so the pose survives the diagonal.
+  rifle.updateMatrix();
+  var gripL = new THREE.Vector3(0, 0.005, 0.17).applyMatrix4(rifle.matrix);
+  var gripR = new THREE.Vector3(0, -0.11, -0.11).applyMatrix4(rifle.matrix);
+  function buildArm(sideX, grip) {
+    var shoulder = new THREE.Vector3(sideX, 1.44, 0.02);
+    var upperDir = new THREE.Vector3(-Math.sign(sideX) * 0.12, -1, 0.30).normalize();
+    var elbow = shoulder.clone().addScaledVector(upperDir, 0.30);
+    var arm = new THREE.Group(); arm.position.copy(shoulder);
+    var upper = new THREE.Mesh(raiderUpperArmGeo, raiderUniformMat); upper.position.y = -0.15; arm.add(upper);
+    arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), upperDir);
+    g.add(arm);
+    var foreDir = grip.clone().sub(elbow); var foreLen = foreDir.length(); foreDir.normalize();
+    var fore = new THREE.Group(); fore.position.copy(elbow);
+    var foreMesh = new THREE.Mesh(raiderArmShortGeo, raiderUniformMat);
+    foreMesh.scale.y = foreLen / 0.48; foreMesh.position.y = -foreLen / 2; fore.add(foreMesh);
+    var glove = new THREE.Mesh(raiderGloveGeo, raiderVestMat); glove.position.y = -foreLen; fore.add(glove);
+    fore.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), foreDir);
+    g.add(fore);
+    return arm;
+  }
+  var armL = buildArm(-0.30, gripL);
+  var armR = buildArm(0.30, gripR);
   // spawn: level 1 first 3 in view, otherwise anywhere open; lane ends as fallback
   var preferVisible = (S.level === 1 && gameState.spawned < 3);
   var spot = pickSpawnPoint(preferVisible);
@@ -1508,6 +1744,7 @@ function updateRaiders(dt) {
       r.walkPhase += dt * r.speed * 2.4;
       var sw = Math.sin(r.walkPhase) * 0.55;
       r.legL.rotation.x = sw; r.legR.rotation.x = -sw;
+      r.torso.rotation.z = Math.sin(r.walkPhase) * 0.035; // v3.2: slight upper-body sway (Gemini) — heavy tactical walk, not a stiff board
       g.position.y = Math.abs(Math.sin(r.walkPhase)) * 0.03; // step bob
       g.rotateX(0.06); // slight forward lean while advancing (arms stay on the rifle)
       // entering range starts a fresh MOVE phase, never an aim pause
@@ -1523,6 +1760,7 @@ function updateRaiders(dt) {
           moveCycle(r, g, dx, dz, dist, dt, 0.45);
         } else {
           r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8;
+          r.torso.rotation.z *= 0.8;
           g.position.y *= 0.8;
           g.rotateX(0.03); // ready stance
         }
@@ -1537,7 +1775,7 @@ function updateRaiders(dt) {
     // rifle: raise to aim during the telegraph, kick back when firing
     r.recoil = Math.max(0, r.recoil - dt * 6);
     var aimTilt = r.telegraph > 0 ? -0.08 : 0;
-    r.rifle.rotation.x += ((aimTilt - 0.06 * r.recoil) - r.rifle.rotation.x) * Math.min(1, dt * 12);
+    r.rifle.rotation.x += ((RIFLE_BASE_PITCH + aimTilt - 0.06 * r.recoil) - r.rifle.rotation.x) * Math.min(1, dt * 12);
     r.rifle.position.z = 0.30 - 0.05 * r.recoil;
     // attack: fire only from the AIM pause (v3.1 move/aim cycle) — the
     // telegraph still completes even if the pause ends mid-aim, so a raider
@@ -1575,7 +1813,7 @@ function raiderFire(r) {
   r.recoil = 1; // rifle kick (decays in updateRaiders)
   damagePlayer(r.damage, 'raider');
 }
-function killRaider(r, silent) {
+function killRaider(r, silent, headshot, weapon) {
   var idx = raiders.indexOf(r);
   if (idx < 0) return;
   raiders.splice(idx, 1);
@@ -1587,7 +1825,21 @@ function killRaider(r, silent) {
   var p = r.group.position;
   spawnBurst(p.x, 1.1, p.z, 42, 0xff7722, 7);
   spawnBurst(p.x, 1.1, p.z, 18, 0xffcc66, 5);
-  sfx.explode(); S.score += r.score; S.kills++; S.levelKills++; flashHit();
+  sfx.explode(); S.score += r.score; S.kills++; S.levelKills++;
+  // v3.2 CF feedback: knife kills pay +25; kills within 3s of each other
+  // count as a streak for DOUBLE / MULTI KILL
+  if (weapon === 'knife') S.score += 25;
+  flashHitKill();
+  var now = S.time;
+  S.killStreak = (now - (S.lastKillAt || -99) <= 3) ? (S.killStreak || 0) + 1 : 1;
+  S.lastKillAt = now;
+  var clsName = (CLASSES[r.cls] || CLASSES.regular).name.toUpperCase();
+  var wtag = weapon === 'knife' ? 'DAO' : (weapon === 'nade' ? 'BOM' : 'PAC-8');
+  if (headshot) showKillmark('HEADSHOT!', 'hs');
+  else if (weapon === 'knife') showKillmark('KNIFE KILL!', 'hs');
+  else if (S.killStreak >= 3) showKillmark('MULTI KILL!', 'multi');
+  else if (S.killStreak === 2) showKillmark('DOUBLE KILL!', 'multi');
+  addKillFeed('BẠN [' + wtag + '] ' + clsName + (headshot ? ' · HEADSHOT' : (weapon === 'knife' ? ' · KNIFE KILL!' : '')));
   r.group.rotation.x = 0;
   dyingRaiders.push({ group: r.group, t: 0 });
   updateHUD();
@@ -1601,6 +1853,7 @@ var shootPoint = new THREE.Vector3();
    fireInterval on top of the hold-to-fire loop. */
 function fireWeapon() {
   if (S.state !== 'playing' || S.reloading) return;
+  if (S.weapon === 'knife') { meleeAttack(); return; } // knife: one swing per trigger pull
   shoot();
 }
 function shoot() {
@@ -1608,12 +1861,16 @@ function shoot() {
   if (S.ammo <= 0) { sfx.dryFire(); startReload(); return; }
   S.ammo--; S.lastShot = S.time;
   S.shotsFired++; // per-level accuracy counter
-  recoil = 1;
+  recoil = 1; recoilPitch = Math.min(0.12, recoilPitch + 0.035); // v3.2: gun kick + Gemini pitch stack (max +0.12 rad); bloom grows below, after the spread is read — every fire path (hold / tap / double-tap / desktop click) funnels through shoot(), so all of them kick
   var mp = new THREE.Vector3(); muzzle.getWorldPosition(mp);
-  flash.scale.set(0.6, 0.6, 1); flashLight.intensity = 60; flashUntil = S.time + 0.05;
-  setTimeout(function () { flash.scale.set(0.001, 0.001, 1); }, 55);
+  flash.scale.set(0.85, 0.85, 1); flashLight.intensity = 90; flashUntil = S.time + 0.03;
+  setTimeout(function () { flash.scale.set(0.001, 0.001, 1); }, 30); // Gemini: flash lives 1 frame / 30ms
   sfx.shoot();
-  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  // CF spray law: the cone reads the bloom BEFORE this shot grows it, so the
+  // first 2-3 shots are exact and sustained fire fans out (max ~1 deg)
+  var spread = bloom * 0.022;
+  bloom = Math.min(1, bloom + 0.28);
+  raycaster.setFromCamera({ x: (Math.random() * 2 - 1) * spread, y: (Math.random() * 2 - 1) * spread }, camera);
   raycaster.far = 120;
   var hitMeshes = [];
   raiders.forEach(function (r) { hitMeshes.push(r.torso, r.head, r.legLMesh, r.legRMesh); });
@@ -1631,15 +1888,18 @@ function shoot() {
   }
   if (dhits.length > 0 && (!worldHit || dhits[0].distance < worldHit.distance)) {
     var hitObj = dhits[0].object;
-    var dmg = CFG.gunDamage * (hitObj.userData.head ? 2 : 1); // headshot = double damage
+    // headshot x4 (CF) — 35 dmg body, 140 head: one-tap headshot on a regular
+    // (100 HP), two on a heavy (240 HP). Shop damage boost +20% next level.
+    var dmg = CFG.gunDamage * (hitObj.userData.head ? 4 : 1) * (S.dmgBoost ? 1.2 : 1);
     sfx.hit(); flashHit();
     S.shotsHit++;
+    spawnDmgNum(dhits[0].point, dmg, !!hitObj.userData.head);
     spawnBurst(dhits[0].point.x, dhits[0].point.y, dhits[0].point.z, 10, 0xffcc44, 4);
     spawnTracer(mp.x, mp.y, mp.z, dhits[0].point.x, dhits[0].point.y, dhits[0].point.z, 0xffd27a);
     if (hitObj.userData.raider) {
       var r = hitObj.userData.raider;
       r.hp -= dmg;
-      if (r.hp <= 0) killRaider(r);
+      if (r.hp <= 0) killRaider(r, false, !!hitObj.userData.head, 'rifle');
     }
   } else if (worldHit) {
     spawnTracer(mp.x, mp.y, mp.z, worldHit.point.x, worldHit.point.y, worldHit.point.z, 0xffd27a);
@@ -1663,7 +1923,231 @@ function finishReload() {
 }
 function flashHit() {
   var h = document.getElementById('hitmark');
-  if (h) { h.style.opacity = '1'; setTimeout(function () { h.style.opacity = '0'; }, 120); }
+  if (!h) return;
+  var tk = ++hitmarkToken; // a kill mark (longer, scaled) must not be cut short by a plain hit's timeout
+  h.style.opacity = '1';
+  setTimeout(function () { if (tk === hitmarkToken) { h.style.opacity = '0'; h.style.transform = ''; } }, 120);
+}
+var hitmarkToken = 0;
+function flashHitKill() { // red X, bigger + longer on a kill
+  var h = document.getElementById('hitmark');
+  if (!h) return;
+  var tk = ++hitmarkToken;
+  h.style.opacity = '1';
+  h.style.transform = 'translate(-50%,-50%) rotate(45deg) scale(1.6)';
+  setTimeout(function () { if (tk === hitmarkToken) { h.style.opacity = '0'; h.style.transform = ''; } }, 350);
+}
+/* ---------- CF feedback: killmark + kill feed + damage numbers ---------- */
+var killmarkTimer = 0;
+function showKillmark(text, kind) {
+  var k = document.getElementById('killmark'); if (!k) return;
+  k.textContent = text;
+  k.className = kind || '';
+  k.style.opacity = '1';
+  clearTimeout(killmarkTimer);
+  killmarkTimer = setTimeout(function () { k.style.opacity = '0'; }, 900);
+}
+function addKillFeed(text) {
+  var f = document.getElementById('killfeed'); if (!f) return;
+  var row = document.createElement('div');
+  row.className = 'feed-row';
+  row.textContent = text;
+  f.insertBefore(row, f.firstChild);
+  while (f.children.length > 4) f.removeChild(f.lastChild);
+  setTimeout(function () {
+    if (!row.parentNode) return;
+    row.style.opacity = '0';
+    setTimeout(function () { if (row.parentNode) row.parentNode.removeChild(row); }, 300);
+  }, 4000);
+}
+// damage numbers: pooled DOM divs projected from the hit point, rising + fading
+var dmgNumPool = [];
+var _dmgV = new THREE.Vector3();
+function spawnDmgNum(point, amount, crit) {
+  var d = null;
+  for (var i = 0; i < dmgNumPool.length; i++) if (dmgNumPool[i].life <= 0) { d = dmgNumPool[i]; break; }
+  if (!d) {
+    if (dmgNumPool.length >= 8) return;
+    var el = document.createElement('div');
+    el.className = 'dmgnum';
+    document.getElementById('dmgnums').appendChild(el);
+    d = { el: el, life: 0, max: 0.7, x: 0, y: 0, z: 0, amount: 0, crit: false };
+    dmgNumPool.push(d);
+  }
+  d.life = 0.7; d.max = 0.7; d.x = point.x; d.y = point.y; d.z = point.z;
+  d.amount = Math.round(amount); d.crit = !!crit;
+  d.el.textContent = '' + d.amount;
+  d.el.className = 'dmgnum' + (crit ? ' crit' : '');
+  d.el.style.display = 'block';
+}
+function updateDmgNums(dt) {
+  for (var i = 0; i < dmgNumPool.length; i++) {
+    var d = dmgNumPool[i];
+    if (d.life <= 0) continue;
+    d.life -= dt;
+    if (d.life <= 0) { d.el.style.display = 'none'; continue; }
+    _dmgV.set(d.x, d.y, d.z).project(camera);
+    if (_dmgV.z > 1) { d.el.style.display = 'none'; d.life = 0; continue; }
+    var rise = (1 - d.life / d.max) * 44;
+    d.el.style.left = ((_dmgV.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+    d.el.style.top = (((-_dmgV.y * 0.5 + 0.5) * window.innerHeight) - rise) + 'px';
+    d.el.style.opacity = Math.min(1, d.life / 0.3);
+  }
+}
+
+/* ---------- grenades (v3.2, CF style): G / bomb button, 2 per level ----------
+   Parabolic throw (~14 m/s + gravity), one bounce, fuse 1.2s after first
+   touch (or 2s after the throw, whichever comes first). 120 dmg at centre
+   -> 30 at the 6m edge, linear falloff, enemies only, no self-damage. */
+var grenades = []; // {mesh, vx,vy,vz, bounced, fuseAt}
+var grenadeGeo = new THREE.SphereGeometry(0.09, 10, 8);
+var grenadeMat = new THREE.MeshStandardMaterial({ color: 0x2e4020, roughness: 0.6, metalness: 0.4 });
+var grenadeLight = new THREE.PointLight(0xff7722, 0, 18, 2); scene.add(grenadeLight);
+var explosionFx = []; // {mesh, life}
+function throwGrenade() {
+  if (S.state !== 'playing' || S.grenades <= 0) return false;
+  S.grenades--;
+  var dir = new THREE.Vector3(-Math.sin(S.yaw) * Math.cos(S.pitch), Math.sin(S.pitch) + 0.18, -Math.cos(S.yaw) * Math.cos(S.pitch)).normalize();
+  var mesh = new THREE.Mesh(grenadeGeo, grenadeMat);
+  mesh.position.copy(camera.position).addScaledVector(dir, 0.6);
+  mesh.position.y -= 0.1;
+  scene.add(mesh);
+  grenades.push({ mesh: mesh, vx: dir.x * 14, vy: dir.y * 14, vz: dir.z * 14, bounced: false, fuseAt: S.time + 2.0 });
+  noiseBurst(0.15, 600, 1, 0.3, 900); // throw whoosh
+  updateHUD();
+  return true;
+}
+function updateGrenades(dt) {
+  for (var i = grenades.length - 1; i >= 0; i--) {
+    var g = grenades[i];
+    g.vy -= 12 * dt;
+    var p = g.mesh.position;
+    p.x += g.vx * dt; p.y += g.vy * dt; p.z += g.vz * dt;
+    var touched = false;
+    if (p.y <= 0.09) {
+      p.y = 0.09;
+      if (g.vy < -1) { g.vy = -g.vy * 0.45; g.vx *= 0.6; g.vz *= 0.6; }
+      else { g.vy = 0; g.vx *= 0.9; g.vz *= 0.9; }
+      touched = true;
+    }
+    // AABB check runs even while rolling, so a grenade cannot slide through a container base
+    for (var ci = 0; ci < colliders.length; ci++) {
+      var c = colliders[ci];
+      if (p.x > c.minX - 0.09 && p.x < c.maxX + 0.09 && p.z > c.minZ - 0.09 && p.z < c.maxZ + 0.09 && p.y < 5.2) {
+        var dxl = p.x - (c.minX - 0.09), dxr = (c.maxX + 0.09) - p.x;
+        var dzl = p.z - (c.minZ - 0.09), dzr = (c.maxZ + 0.09) - p.z;
+        var m = Math.min(dxl, dxr, dzl, dzr);
+        if (m === dxl || m === dxr) g.vx *= -0.45; else g.vz *= -0.45;
+        g.vy *= 0.6; touched = true; break;
+      }
+    }
+    if (touched && !g.bounced) { g.bounced = true; g.fuseAt = Math.min(g.fuseAt, S.time + 1.2); }
+    if (S.time >= g.fuseAt) { explodeGrenade(g); grenades.splice(i, 1); }
+  }
+}
+function explodeGrenade(g) {
+  var p = g.mesh.position;
+  scene.remove(g.mesh);
+  var fire = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff8822, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  fire.position.set(p.x, Math.max(0.6, p.y), p.z);
+  scene.add(fire);
+  explosionFx.push({ mesh: fire, life: 0.5 });
+  grenadeLight.position.copy(fire.position); grenadeLight.intensity = 120;
+  spawnBurst(p.x, p.y + 0.3, p.z, 42, 0xff7722, 8);
+  spawnBurst(p.x, p.y + 0.5, p.z, 24, 0xffcc66, 5);
+  spawnBurst(p.x, p.y + 0.8, p.z, 16, 0x888888, 2.5); // smoke
+  sfx.explode();
+  noiseBurst(0.5, 300, 0.7, 0.9, 60); // deep boom
+  S.shakeT = 0.35; // slight camera shake
+  raiders.slice().forEach(function (r) {
+    var d = Math.hypot(r.group.position.x - p.x, 1.1 - p.y, r.group.position.z - p.z);
+    if (d <= 6) {
+      var dmg = Math.round(120 - (120 - 30) * (d / 6));
+      r.hp -= dmg;
+      spawnDmgNum(new THREE.Vector3(r.group.position.x, 1.6, r.group.position.z), dmg, false);
+      if (r.hp <= 0) killRaider(r, false, false, 'nade');
+    }
+  });
+  updateHUD();
+}
+function updateExplosions(dt) {
+  for (var i = explosionFx.length - 1; i >= 0; i--) {
+    var f = explosionFx[i];
+    f.life -= dt;
+    if (f.life <= 0) { scene.remove(f.mesh); explosionFx.splice(i, 1); grenadeLight.intensity = 0; continue; }
+    var k = 1 - f.life / 0.5;
+    f.mesh.scale.setScalar(1 + k * 5);
+    f.mesh.material.opacity = 0.9 * (1 - k);
+    grenadeLight.intensity = 120 * (1 - k);
+  }
+}
+
+/* ---------- melee knife (v3.2): [1]/[2] or the swap button ----------
+   +15% move speed, 2.2m range, 60 deg cone, 65 dmg per swing, 0.8s cooldown.
+   Knife kills pay +25 (see killRaider). Enemies never use knives. */
+function switchWeapon(w) {
+  if (S.state !== 'playing') return;
+  if (w !== 'rifle' && w !== 'knife') return;
+  S.weapon = w;
+  gun.visible = (w === 'rifle');
+  knife.visible = (w === 'knife');
+  S.knifeSwing = 0;
+  S.firing = false;
+  updateHUD();
+}
+function meleeAttack() {
+  if (S.state !== 'playing' || S.weapon !== 'knife') return;
+  if (S.time < S.meleeCd) return;
+  S.meleeCd = S.time + 0.8;
+  S.knifeSwing = 1;
+  noiseBurst(0.12, 2400, 1, 0.35, 500); // slash whoosh
+  var fx = -Math.sin(S.yaw), fz = -Math.cos(S.yaw);
+  raiders.slice().forEach(function (r) {
+    var dx = r.group.position.x - camera.position.x, dz = r.group.position.z - camera.position.z;
+    var d = Math.hypot(dx, dz);
+    if (d <= 2.2 && (dx * fx + dz * fz) / (d || 1) > 0.866) {
+      r.hp -= 65;
+      spawnDmgNum(new THREE.Vector3(r.group.position.x, 1.5, r.group.position.z), 65, false);
+      sfx.hit(); flashHit();
+      if (r.hp <= 0) killRaider(r, false, false, 'knife');
+    }
+  });
+}
+
+/* ---------- shop (v3.2): score is the currency, bought on wave-clear ----------
+   Buffs last exactly one level (applied in startLevel); heal is immediate;
+   grenades stack. No real money, no out-of-game purchases. */
+var SHOP_ITEMS = {
+  nade: { price: 150, once: false },
+  armor: { price: 200, once: true },
+  heal: { price: 100, once: false },
+  dmg: { price: 250, once: true }
+};
+var shopBought = {};
+function buyShopItem(item) {
+  var it = SHOP_ITEMS[item];
+  if (!it || S.state !== 'waveclear') return false;
+  if (it.once && shopBought[item]) return false;
+  if (S.score < it.price) return false;
+  S.score -= it.price;
+  if (item === 'nade') S.grenades += 2;
+  else if (item === 'armor') { S.shopArmor = true; shopBought.armor = true; }
+  else if (item === 'heal') { S.hp = S.maxHp; }
+  else if (item === 'dmg') { S.shopDmg = true; shopBought.dmg = true; }
+  refreshShop();
+  updateHUD();
+  return true;
+}
+function refreshShop() {
+  var sp = document.getElementById('shopPoints');
+  if (sp) sp.textContent = 'ĐIỂM: ' + S.score;
+  document.querySelectorAll('.shop-btn').forEach(function (b) {
+    var it = SHOP_ITEMS[b.dataset.item];
+    if (!it) return;
+    var owned = it.once && shopBought[b.dataset.item];
+    b.disabled = owned || S.score < it.price;
+    if (owned) b.classList.add('bought');
+  });
 }
 
 /* ---------- levels / game flow (GPT guide §4, §6) ---------- */
@@ -1674,7 +2158,11 @@ function updateHUD() {
   if (!el.hpNum) return;
   el.hpNum.textContent = Math.ceil(S.hp);
   document.getElementById('hpBar').style.width = (S.hp / S.maxHp * 100) + '%';
-  el.ammoNum.textContent = S.ammo + ' / ∞';
+  el.ammoNum.textContent = S.weapon === 'knife' ? 'DAO' : S.ammo + ' / ∞';
+  var nn = document.getElementById('nadeNum'); if (nn) nn.textContent = S.grenades;
+  var nb = document.getElementById('nadeBadge'); if (nb) nb.textContent = S.grenades;
+  var wl = document.getElementById('weaponLine');
+  if (wl) wl.textContent = S.weapon === 'knife' ? 'DAO · BẤM ĐỂ CHÉM · [1] SÚNG' : 'PAC-8 LONGSHORE · R TO RELOAD · [2] DAO';
   el.scoreNum.textContent = S.score;
   el.waveNum.textContent = 'LEVEL ' + S.level;
   el.hostilesNum.textContent = 'HOSTILES LEFT: ' + (raiders.length + spawnList.length);
@@ -1708,19 +2196,39 @@ function drawRadar() {
   // north tick
   g.fillStyle = '#E2B96D';
   g.beginPath(); g.moveTo(size / 2, 3); g.lineTo(size / 2 - 4, 10); g.lineTo(size / 2 + 4, 10); g.closePath(); g.fill();
-  // enemy dots — straight from gameState.enemies (ground truth)
-  var dots = 0;
+  // enemy dots — straight from gameState.enemies (ground truth). Enemies
+  // within the 18m ring draw at their true position (solid dot); enemies
+  // beyond it are CLAMPED to the ring edge (hollow smaller dot) so all living
+  // raiders are always on the radar — v3.0's bug was that far dots at true
+  // position were 3px specks lost against the grid/containers, and the real
+  // browser test only ever saw 1 red dot at spawn.
+  var dots = 0, farDots = 0, farList = [];
+  var px0 = camera.position.x, pz0 = camera.position.z;
   gameState.enemies.forEach(function (r) {
     dots++;
-    g.fillStyle = CLASSES[r.cls].color;
-    g.beginPath(); g.arc(toX(r.group.position.x), toY(r.group.position.z), 3, 0, 6.29); g.fill();
-    g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1; g.stroke();
+    var ex = r.group.position.x, ez = r.group.position.z;
+    var dx = ex - px0, dz = ez - pz0;
+    var dist = Math.hypot(dx, dz);
+    if (dist > 18) {
+      farDots++;
+      farList.push({ x: px0 + dx / dist * 18, z: pz0 + dz / dist * 18, color: CLASSES[r.cls].color });
+    } else {
+      g.fillStyle = CLASSES[r.cls].color;
+      g.beginPath(); g.arc(toX(ex), toY(ez), 3, 0, 6.29); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1; g.stroke();
+    }
   });
   radarDots = dots;
+  radarFar = farDots;
   // player arrow + 18m attack-range ring (rotates with yaw; yaw 0 = north = up)
   var px = toX(camera.position.x), py = toY(camera.position.z);
   g.strokeStyle = '#78908A';
   g.beginPath(); g.arc(px, py, 18 * scale, 0, 6.29); g.stroke();
+  // far enemies, pinned to the ring edge (hollow = "beyond the ring")
+  farList.forEach(function (f) {
+    g.strokeStyle = f.color; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(toX(f.x), toY(f.z), 2.5, 0, 6.29); g.stroke();
+  });
   g.save();
   g.translate(px, py);
   g.rotate(-S.yaw);
@@ -1738,6 +2246,14 @@ function startGame() {
   initAudio();
   S.score = 0; S.kills = 0; S.levelKills = 0; S.hp = S.maxHp; S.ammo = CFG.magSize; S.level = 0;
   S.reloading = false; S.firing = false;
+  // v3.2 reset: rifle equipped, 2 grenades, no shop buffs, no streak
+  S.weapon = 'rifle'; S.grenades = 2; S.armor = false; S.dmgBoost = false;
+  S.shopArmor = false; S.shopDmg = false; S.killStreak = 0; S.lastKillAt = -99;
+  shopBought = {};
+  gun.visible = true; knife.visible = false;
+  grenades.forEach(function (g) { scene.remove(g.mesh); }); grenades.length = 0;
+  var shopPanel = document.getElementById('shopPanel');
+  if (shopPanel) shopPanel.style.display = 'none';
   // fresh accounting for the run (before cleanup, so silent kills stay silent)
   gameState.phase = 'ready'; gameState.level = 1; gameState.wave = 1;
   gameState.spawned = 0; gameState.alive = 0; gameState.killed = 0;
@@ -1757,6 +2273,9 @@ function startGame() {
   setBoot('boot ok · state=playing');
 }
 function startLevel(n) {
+  // shop buffs bought on the wave-clear screen last exactly one level
+  S.armor = !!S.shopArmor; S.dmgBoost = !!S.shopDmg;
+  S.shopArmor = false; S.shopDmg = false;
   S.level = n; gameState.level = n; gameState.wave = n;
   gameState.spawned = 0; gameState.alive = 0; gameState.killed = 0;
   gameState.enemies.clear();
@@ -1782,6 +2301,8 @@ function startLevel(n) {
 }
 function nextLevel() {
   if (S.state !== 'waveclear') return; // one advance per clear, never twice
+  var shopPanel = document.getElementById('shopPanel');
+  if (shopPanel) shopPanel.style.display = 'none';
   el.endScreen.style.display = 'none';
   S.state = 'playing';
   setPhase('next-level');
@@ -1802,7 +2323,8 @@ function levelCleared() {
   setPhase('wave-clear');
   gsEvent('WAVE_CLEARED', { level: S.level, reward: reward });
   sfx.clear();
-  el.endTitle.textContent = 'AREA SECURED';
+  el.endTitle.textContent = 'MISSION SUCCESS'; // CF-style wave-clear banner (gold)
+  el.endTitle.style.color = '#E8B73C';
   el.endText.innerHTML =
     '<div style="letter-spacing:3px;color:#e8b73c">LEVEL ' + S.level + ' CLEARED</div>' +
     '<div style="margin-top:10px;font-size:15px;line-height:1.9;color:#d8d2c2">' +
@@ -1817,6 +2339,11 @@ function levelCleared() {
   if (document.pointerLockElement === canvas) document.exitPointerLock();
   waveClearTimer = 5;
   setPhase('intermission');
+  S.grenades = Math.max(S.grenades, 2); // restock grenades to 2 per level (shop can stack above)
+  shopBought = {};
+  var shopPanel = document.getElementById('shopPanel');
+  if (shopPanel) shopPanel.style.display = 'block';
+  refreshShop();
   updateHUD();
 }
 function gameOver() {
@@ -1824,8 +2351,11 @@ function gameOver() {
   setPhase('gameover');
   gsEvent('GAME_OVER', { level: S.level, score: S.score });
   el.endTitle.textContent = 'OVERRUN';
+  el.endTitle.style.color = '#E05A4E';
   el.endText.textContent = 'The berth is lost. Score ' + S.score + ' · Level ' + S.level + ' · Kills ' + S.kills;
   el.nextBtn.style.display = 'none'; el.retryBtn.style.display = 'inline-block';
+  var shopPanel = document.getElementById('shopPanel');
+  if (shopPanel) shopPanel.style.display = 'none';
   el.endScreen.style.display = 'flex';
   if (document.pointerLockElement === canvas) document.exitPointerLock();
 }
@@ -1844,6 +2374,9 @@ function resumeGame() {
 el.deployBtn.addEventListener('click', startGame);
 el.resumeBtn.addEventListener('click', resumeGame);
 el.restartBtn.addEventListener('click', function () { el.pauseScreen.style.display = 'none'; startGame(); });
+document.querySelectorAll('.shop-btn').forEach(function (b) {
+  b.addEventListener('click', function () { buyShopItem(b.dataset.item); });
+});
 el.menuBtn.addEventListener('click', function () {
   el.pauseScreen.style.display = 'none';
   el.hud.style.display = 'none';
@@ -1872,6 +2405,7 @@ function animate() {
   updateSplashes(dt, camera.position.x, camera.position.z);
   updateParticles(dt);
   updateTracers(dt);
+  updateDmgNums(dt);
   if (flashLight.intensity > 0 && S.time > flashUntil) flashLight.intensity = 0;
   if (S.state === 'menu') {
     // slow orbit around the port behind the menu
@@ -1895,7 +2429,12 @@ function animate() {
       setPhase('combat');
     }
     updateRaiders(dt);
-    if (S.firing && !S.reloading && S.time - S.lastShot >= CFG.fireInterval) shoot();
+    updateGrenades(dt);
+    updateExplosions(dt);
+    if (S.firing && !S.reloading) {
+      if (S.weapon === 'knife') meleeAttack(); // cooldown-guarded inside
+      else if (S.time - S.lastShot >= CFG.fireInterval) shoot();
+    }
     if (S.reloading && S.time >= S.reloadEnd) finishReload();
     if (spawnList.length === 0 && raiders.length === 0) levelCleared();
     fpsAcc += dt; fpsN++;
