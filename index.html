@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="build-revision" content="v3.0.0-20261116-a">
 <title>SALTLINE DEMO — Single-File Procedural FPS</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,9 +26,13 @@
   #topLeft { top: 16px; left: 18px; }
   #topLeft .big { font-size: 22px; font-weight: bold; color: #e8b73c; }
   #topLeft .small { color: #cfc8b8; margin-top: 2px; }
-  #topRight { top: 16px; right: 18px; text-align: right; }
+  /* score sits left of the radar (radar 176px + margins) */
+  #topRight { top: 16px; right: 210px; text-align: right; }
   #topRight .big { font-size: 26px; font-weight: bold; }
   #topRight .small { color: #cfc8b8; }
+  /* radar: ground-truth enemy positions, drawn from gameState.enemies (10 Hz) */
+  #radar { position: absolute; top: 18px; right: 18px; width: 176px; height: 176px; border: 1px solid #71847f; border-radius: 8px; background: rgba(13,23,29,0.88); pointer-events: none; }
+  #build-version { position: absolute; left: 8px; bottom: 56px; color: #9eb1aa; font: 10px monospace; letter-spacing: 1px; pointer-events: none; }
   #bottomLeft { bottom: 18px; left: 18px; width: 240px; }
   #bottomLeft .label { font-size: 13px; color: #cfc8b8; margin-bottom: 5px; }
   #hpBarWrap { width: 100%; height: 12px; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.35); }
@@ -36,7 +41,7 @@
   #bottomRight .big { font-size: 34px; font-weight: bold; }
   #bottomRight .small { font-size: 13px; color: #cfc8b8; }
   #reload { display: none; position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); color: #e8b73c; font-size: 18px; letter-spacing: 2px; }
-  #objective { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); max-width: 640px; text-align: center; font-size: 15px; color: #d8d2c2; font-style: italic; text-shadow: 0 1px 3px #000; }
+  #objective { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); max-width: 640px; text-align: center; font-size: 15px; color: #d8d2c2; font-style: italic; text-shadow: 0 1px 3px #000; }
   #waveBanner { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); text-align: center; font-size: 44px; font-weight: bold; letter-spacing: 4px; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.9); opacity: 0; transition: opacity 0.4s; pointer-events: none; }
   #waveBanner .sub { font-size: 18px; letter-spacing: 2px; color: #e8b73c; margin-top: 6px; }
   #lockNote { display: none; position: absolute; left: 50%; top: 70px; transform: translateX(-50%); max-width: 640px; text-align: center; font-size: 13px; color: #ffd27a; background: rgba(0,0,0,0.55); padding: 6px 12px; border: 1px solid rgba(255,210,122,0.5); }
@@ -64,20 +69,33 @@
   /* ---------- touch controls (only on touch devices, while playing) ---------- */
   #touchUI { display: none; position: fixed; inset: 0; z-index: 15; pointer-events: none; }
   body.touch.playing #touchUI { display: block; }
-  #joyBase { position: absolute; left: 20px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,0.07); border: 2px solid rgba(255,255,255,0.35); pointer-events: auto; touch-action: none; }
-  #joyKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(232,183,60,0.85); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
-  .tbtn { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 50%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; color: #14100a; font-weight: bold; border: none; font-family: inherit; }
-  #fireBtn { right: 20px; bottom: 30px; width: 76px; height: 76px; font-size: 17px; letter-spacing: 1px; background: #e8b73c; box-shadow: 0 4px 0 #9a7414, 0 6px 18px rgba(0,0,0,0.5); }
-  #fireBtn.active { background: #f5c95a; transform: scale(0.93); }
-  #reloadBtn { right: 108px; bottom: 48px; width: 56px; height: 56px; font-size: 22px; background: rgba(242,237,224,0.9); }
-  #touchPauseBtn { right: 14px; top: 14px; width: 44px; height: 44px; font-size: 18px; background: rgba(0,0,0,0.55); color: #f2ede0; border: 1px solid rgba(255,255,255,0.4); }
+  #joyBase { position: absolute; left: max(18px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); width: 112px; height: 112px; border-radius: 50%; background: rgba(255,255,255,0.07); border: 2px solid rgba(255,255,255,0.35); pointer-events: auto; touch-action: none; }
+  #joyKnob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(232,183,60,0.85); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+  .tbtn { position: absolute; display: flex; align-items: center; justify-content: center; border-radius: 50%; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; font-family: inherit; border: 1.5px solid rgba(226,185,109,0.65); background: rgba(13,23,29,0.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
+  .tbtn svg { display: block; }
+  #fireBtn { right: max(22px, env(safe-area-inset-right)); bottom: max(34px, env(safe-area-inset-bottom)); width: 78px; height: 78px; }
+  #fireBtn svg { width: 40px; height: 40px; stroke: #e2b96d; }
+  #fireBtn.active { background: rgba(226,185,109,0.30); border-color: #e2b96d; box-shadow: 0 0 18px rgba(226,185,109,0.45); transform: scale(0.93); }
+  #reloadBtn { right: 110px; bottom: 50px; width: 54px; height: 54px; border-color: rgba(216,210,194,0.5); }
+  #reloadBtn svg { width: 28px; height: 28px; stroke: #d8d2c2; }
+  #reloadBtn:active { background: rgba(216,210,194,0.22); }
+  #touchPauseBtn { left: max(12px, env(safe-area-inset-left)); top: max(12px, env(safe-area-inset-top)); width: 44px; height: 44px; font-size: 18px; background: rgba(0,0,0,0.55); color: #f2ede0; border: 1px solid rgba(255,255,255,0.4); }
   #rotateHint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: 86vw; text-align: center; font-size: 13px; color: #ffd27a; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,210,122,0.5); padding: 7px 12px; pointer-events: auto; display: none; white-space: nowrap; }
   #rotateHint button { margin-left: 8px; background: none; border: none; color: #fff; font-size: 14px; cursor: pointer; }
-  /* touch: move HUD clear of the on-screen controls */
+  /* touch: move HUD clear of the on-screen controls + radar */
   body.touch #bottomLeft { bottom: 168px; left: 16px; width: 170px; }
   body.touch #bottomRight { bottom: 128px; right: 16px; }
-  body.touch #topRight { top: 68px; right: 14px; }
-  body.touch #objective { bottom: 158px; font-size: 13px; padding: 0 12px; }
+  /* portrait: hint sits BELOW the top HUD row (pause / LEVEL / radar) so it
+     never covers them; objective sits above the vitals/ammo row */
+  body.touch #rotateHint { top: 112px; left: 64px; right: 112px; transform: none; max-width: none; white-space: normal; }
+  body.touch #objective { bottom: 230px; max-width: 86vw; font-size: 13px; padding: 0 12px; }
+  body.touch #topLeft { top: max(12px, env(safe-area-inset-top)); left: 64px; }
+  body.touch #topRight { top: 116px; right: max(12px, env(safe-area-inset-right)); }
+  body.touch #radar { top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 92px; height: 92px; }
+  /* touch: dev status line hidden; version sits at the very bottom-left,
+     below the joystick */
+  body.touch #boot { display: none; }
+  body.touch #build-version { bottom: 6px; }
   body.touch .btn { font-size: 26px; padding: 18px 54px; }
   body.touch #lockNote { display: none !important; }
   .ctl-touch { display: none; }
@@ -103,8 +121,10 @@
 <div id="hud">
   <div id="crosshair"><div class="dot"></div></div>
   <div id="hitmark"></div>
-  <div class="hud-box" id="topLeft"><div class="big" id="waveNum">WAVE 1</div><div class="small" id="dronesNum">HOSTILES LEFT: 0</div></div>
+  <div class="hud-box" id="topLeft"><div class="big" id="waveNum">LEVEL 1</div><div class="small" id="hostilesNum">HOSTILES LEFT: 0</div></div>
   <div class="hud-box" id="topRight"><div class="big" id="scoreNum">0</div><div class="small">SCORE</div></div>
+  <canvas id="radar" width="176" height="176"></canvas>
+  <div id="build-version">v3.0.0 · v3.0.0-20261116-a</div>
   <div class="hud-box" id="bottomLeft"><div class="label">VITALS — <span id="hpNum">100</span> HP</div><div id="hpBarWrap"><div id="hpBar"></div></div></div>
   <div class="hud-box" id="bottomRight"><div class="big" id="ammoNum">30 / ∞</div><div class="small">PAC-8 LONGSHORE · R TO RELOAD</div></div>
   <div id="reload">⟳ RELOADING…</div>
@@ -115,8 +135,8 @@
 
 <div id="touchUI">
   <div id="joyBase"><div id="joyKnob"></div></div>
-  <button class="tbtn" id="fireBtn">BẮN</button>
-  <button class="tbtn" id="reloadBtn">⟳</button>
+  <button class="tbtn" id="fireBtn" aria-label="Bắn"><svg viewBox="0 0 40 40" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="20" cy="20" r="12"/><line x1="20" y1="2" x2="20" y2="9"/><line x1="20" y1="31" x2="20" y2="38"/><line x1="2" y1="20" x2="9" y2="20"/><line x1="31" y1="20" x2="38" y2="20"/><circle cx="20" cy="20" r="1.6" fill="#e2b96d" stroke="none"/></svg></button>
+  <button class="tbtn" id="reloadBtn" aria-label="Nạp đạn"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><polyline points="20 3 20 8 15 8"/></svg></button>
   <button class="tbtn" id="touchPauseBtn">II</button>
   <div id="rotateHint">Xoay ngang màn hình để chơi thoải mái hơn <button id="rotateDismiss" aria-label="Đóng">✕</button></div>
 </div>
@@ -130,11 +150,11 @@
   <div class="controls ctl-desktop">
     <b>W A S D</b> move &nbsp; <b>MOUSE</b> aim &nbsp; <b>CLICK</b> fire &nbsp; <b>R</b> reload &nbsp; <b>SHIFT</b> sprint<br>
     <b>ESC</b> pause &nbsp; <b>P</b> quality &nbsp; · &nbsp; No mouse lock? <b>DRAG</b> to look, <b>ARROWS / I J K L</b> to turn<br>
-    Shoot every Gull and Raider in the wave to clear it — next wave is faster and meaner.
+    Clear every raider in the level — the next level is faster and meaner.
   </div>
   <div class="controls ctl-touch">
-    <b>Kéo trái</b> di chuyển &nbsp; · &nbsp; <b>Kéo phải</b> ngắm &nbsp; · &nbsp; Giữ <b>BẮN</b> để bắn &nbsp; · &nbsp; <b>⟳</b> nạp đạn<br>
-    Hạ hết Gull + Raider trong wave để qua wave — wave sau nhanh và đông hơn.
+    <b>Kéo trái</b> di chuyển &nbsp; · &nbsp; <b>Kéo phải</b> ngắm &nbsp; · &nbsp; Giữ <b>nút ngắm</b> để bắn, chạm 2 lần để bắn 1 phát &nbsp; · &nbsp; <b>nút xoay</b> nạp đạn<br>
+    Hạ hết raider trong màn để qua màn — màn sau nhanh và đông hơn.
   </div>
 </div>
 
@@ -142,7 +162,7 @@
   <div class="kicker">OPERATION ON HOLD</div>
   <h2 class="big">PAUSED</h2>
   <div class="controls ctl-desktop"><b>W A S D</b> move · <b>MOUSE</b> aim · <b>CLICK</b> fire · <b>R</b> reload · <b>ESC</b> resume</div>
-  <div class="controls ctl-touch"><b>Kéo trái</b> di chuyển · <b>Kéo phải</b> ngắm · Giữ <b>BẮN</b> để bắn · <b>⟳</b> nạp đạn</div>
+  <div class="controls ctl-touch"><b>Kéo trái</b> di chuyển · <b>Kéo phải</b> ngắm · Giữ <b>nút ngắm</b> để bắn · <b>nút xoay</b> nạp đạn</div>
   <div style="margin-top:18px">
     <button class="btn" id="resumeBtn">RESUME</button>
     <button class="btn ghost" id="restartBtn">RESTART</button>
@@ -151,10 +171,10 @@
 </div>
 
 <div class="screen" id="endScreen">
-  <h2 class="big" id="endTitle">WAVE CLEAR</h2>
+  <h2 class="big" id="endTitle">AREA SECURED</h2>
   <div id="endText"></div>
   <div>
-    <button class="btn" id="nextBtn">NEXT WAVE ▶</button>
+    <button class="btn" id="nextBtn">NEXT LEVEL ▶</button>
     <button class="btn" id="retryBtn" style="display:none">↻ TRY AGAIN</button>
   </div>
 </div>
@@ -196,21 +216,137 @@ window.addEventListener('unhandledrejection', function (e) { showErr('Promise: '
 var CFG = {
   magSize: 30, fireInterval: 0.13, reloadTime: 1.4, gunDamage: 35,
   playerSpeed: 6, sprintMul: 1.55, playerRadius: 0.45, eyeHeight: 1.7,
-  bounds: 55, droneBaseSpeed: 5, droneAttackRange: 20, droneAttackCd: 1.6,
-  droneDamageBase: 8, waveBonus: 250,
-  raiderSpeed: 2.2, raiderAttackRange: 18, raiderStopRange: 14, raiderDamage: 7,
-  raiderHp: 105, raiderScore: 150, raiderAttackCd: 2.0
+  bounds: 55, clearBonus: 150
 };
+/* ---------- raider classes (GPT guide §4) — raiders only, no drones ----------
+   REGULAR Port Raider / HEAVY Container Breaker / RUNNER Dock Sprinter. */
+var CLASSES = {
+  regular: { name: 'Port Raider', hp: 100, speed: 2.0, damage: 8, score: 50, stopRange: 14, attackRange: 18, scale: 1.0, color: '#F06455' },
+  heavy: { name: 'Container Breaker', hp: 240, speed: 1.15, damage: 17, score: 100, stopRange: 14, attackRange: 18, scale: 1.18, color: '#E5A13B' },
+  runner: { name: 'Dock Sprinter', hp: 65, speed: 3.5, damage: 6, score: 75, stopRange: 7, attackRange: 10, scale: 0.94, color: '#FF3D68' }
+};
+var LEVEL_TABLE = [ // [regular, heavy, runner] per level 1..10
+  [4, 0, 0], [5, 0, 1], [5, 1, 2], [7, 1, 2], [7, 2, 3],
+  [8, 2, 4], [9, 3, 4], [10, 3, 5], [11, 4, 5], [12, 4, 6]
+];
+function levelComp(level) {
+  if (level <= 10) return LEVEL_TABLE[level - 1];
+  return [Math.round(12 + level * 1.2), Math.floor(level * 0.4), Math.floor(level * 0.6)];
+}
+function levelMultipliers(level) {
+  return {
+    hp: 1 + (level - 1) * 0.08,
+    dmg: 1 + (level - 1) * 0.045,
+    spd: Math.min(1 + (level - 1) * 0.025, 1.25)
+  };
+}
+/* ---------- build fingerprint (v3.0, GPT guide §7.1) ----------
+   Revision changes on every deploy — it is the cache-proof identity of the
+   build the player actually loaded (more useful than the version alone). */
+var BUILD = { version: '3.0.0', revision: 'v3.0.0-20261116-a', builtAt: '2026-11-16T13:30:00+07:00' };
+if (window.console && console.info) console.info('[BUILD]', BUILD.revision);
+
+/* ---------- wave state machine + spawn accounting (GPT guide §7.2) ----------
+   One phase at a time: boot → ready → spawning → combat → wave-clear →
+   intermission → next-level. Spawn accounting is the ground truth for the
+   diagnostics object and the radar: spawned === killed + alive, always. */
+var gameState = {
+  phase: 'boot', // boot | ready | spawning | combat | wave-clear | intermission | next-level | gameover
+  level: 1, wave: 1,
+  spawned: 0, alive: 0, killed: 0,
+  enemies: new Map(), // id -> raider object (alive only)
+  events: [], // ring buffer, max 50
+  lastEvent: '-'
+};
+function gsEvent(name, data) {
+  gameState.events.push({ t: +S.time.toFixed(1), name: name, data: data || null });
+  if (gameState.events.length > 50) gameState.events.shift();
+  gameState.lastEvent = name;
+  debugLog();
+}
+function setPhase(p) {
+  if (gameState.phase === p) return;
+  gameState.phase = p;
+  gsEvent('PHASE_' + p.toUpperCase().replace(/-/g, '_'));
+}
+function newEnemyId() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+  return 'e-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e9).toString(36);
+}
+
+/* ---------- diagnostics (no on-screen panel — user 16/11 14:03) ----------
+   F3 or ?debug=1 only turns on console logging. The live numbers live at
+   window.__saltlineDebug (getters, so a headless check reads current values)
+   — nothing is ever drawn on screen. */
+var _qs = (function () { try { return new URLSearchParams(window.location.search); } catch (e) { return { get: function () { return null; } }; } })();
+var debugOn = _qs.get('debug') === '1';
+var radarDots = 0; // last radar dot count (written by drawRadar)
+var _frustum = new THREE.Frustum();
+var _projView = new THREE.Matrix4();
+var _tmpV = new THREE.Vector3();
+function countSceneEnemies() {
+  if (typeof scene === 'undefined' || !scene) return 0; // called before scene exists (boot)
+  var n = 0;
+  scene.traverse(function (o) { if (o.userData && o.userData.isEnemyGroup) n++; });
+  return n;
+}
+function countVisibleEnemies() {
+  if (typeof camera === 'undefined' || !camera) return 0; // called before camera exists (boot)
+  camera.updateMatrixWorld();
+  _projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  _frustum.setFromProjectionMatrix(_projView);
+  var n = 0;
+  gameState.enemies.forEach(function (r) {
+    _tmpV.set(r.group.position.x, 1.1, r.group.position.z);
+    if (_frustum.containsPoint(_tmpV)) {
+      n++;
+      if (r.visibleSince === null || r.visibleSince === undefined) r.visibleSince = S.time;
+    }
+  });
+  return n;
+}
+window.__saltlineDebug = {
+  get version() { return BUILD.version; },
+  get revision() { return BUILD.revision; },
+  get state() { return S.state; },
+  get phase() { return gameState.phase; },
+  get level() { return gameState.level; },
+  get spawned() { return gameState.spawned; },
+  get alive() { return gameState.alive; },
+  get killed() { return gameState.killed; },
+  get sceneEnemies() { return countSceneEnemies(); },
+  get visibleEnemies() { return countVisibleEnemies(); },
+  get radarDots() { return radarDots; },
+  get lastEvent() { return gameState.lastEvent; },
+  get score() { return S.score; },
+  get events() { return gameState.events.slice(-10).map(function (e) { return e.t + ' ' + e.name; }); }
+};
+function debugLog() {
+  if (!debugOn) return;
+  console.info('[DEBUG]', gameState.phase, 'level=' + gameState.level,
+    'spawned=' + gameState.spawned, 'alive=' + gameState.alive, 'killed=' + gameState.killed,
+    'scene=' + countSceneEnemies(), 'visible=' + countVisibleEnemies(), 'radar=' + radarDots,
+    'event=' + gameState.lastEvent);
+}
+function setDebug(on) {
+  debugOn = !!on;
+  if (debugOn) {
+    console.info('[DEBUG] on — live diagnostics at window.__saltlineDebug (no on-screen panel)');
+    debugLog();
+  } else console.info('[DEBUG] off');
+}
+if (debugOn) setDebug(true);
 var S = {
   state: 'menu', // menu | playing | paused | waveclear | gameover
-  hp: 100, maxHp: 100, score: 0, wave: 0, ammo: CFG.magSize,
+  hp: 100, maxHp: 100, score: 0, level: 0, ammo: CFG.magSize,
   reloading: false, reloadEnd: 0, lastShot: 0, firing: false,
   yaw: 0, pitch: 0, keys: {}, fallback: false, dragging: false,
-  lastDamageAt: -99, time: 0, kills: 0, autoStart: false
+  lastDamageAt: -99, time: 0, kills: 0, levelKills: 0, autoStart: false,
+  shotsFired: 0, shotsHit: 0, // per level, for the wave-clear accuracy line
+  levelStartTime: 0, levelRewarded: false
 };
 
 /* ---------- touch detection: one file, one link, auto mobile/desktop ---------- */
-var _qs = (function () { try { return new URLSearchParams(window.location.search); } catch (e) { return { get: function () { return null; } }; } })();
 var _touchParam = _qs.get('touch');
 var IS_TOUCH = _touchParam === '1' ? true : _touchParam === '0' ? false :
   ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0));
@@ -657,18 +793,39 @@ canvas.addEventListener('mousedown', function (e) {
   if (IS_TOUCH) return; // touch uses its own handlers (joystick / FIRE button / drag-look)
   if (S.state !== 'playing') return;
   if (e.button === 0) {
+    mouseDownAt = performance.now();
     if (document.pointerLockElement !== canvas && !S.fallback) requestLock();
     else { S.firing = true; S.dragging = true; }
   }
 });
-window.addEventListener('mouseup', function (e) { if (e.button === 0) { S.firing = false; S.dragging = false; } });
+/* desktop double-click = one guaranteed shot (GPT guide §5). The guard below
+   keeps a double-click from stacking a third shot on top of the two trigger
+   pulls — one physical click is exactly one shot, and the dblclick recognizer
+   never double-counts a tap that just fired. */
+canvas.addEventListener('dblclick', function (e) {
+  if (IS_TOUCH) return;
+  if (S.state !== 'playing') return;
+  if (S.time - S.lastShot < 0.28) return; // tap-fire already shot within the double-tap window
+  fireWeapon();
+});
+window.addEventListener('mouseup', function (e) {
+  if (e.button === 0) {
+    // short click = one precise shot even if no animation frame ran while
+    // the button was down (the old "fast click sometimes doesn't register")
+    if (!IS_TOUCH && S.state === 'playing' && mouseDownAt && performance.now() - mouseDownAt < 250) fireWeapon();
+    mouseDownAt = 0;
+    S.firing = false; S.dragging = false;
+  }
+});
+var mouseDownAt = 0;
 canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 window.addEventListener('keydown', function (e) {
   keys[e.code] = true;
+  if (e.code === 'F3') { e.preventDefault(); setDebug(!debugOn); return; }
   if (e.code === 'KeyR') startReload();
   if (e.code === 'KeyP') cycleQuality();
   if (e.code === 'Escape' && S.state === 'playing' && (S.fallback || document.pointerLockElement !== canvas)) pauseGame();
-  if (e.code === 'Enter' && S.state === 'waveclear') nextWave();
+  if (e.code === 'Enter' && S.state === 'waveclear') nextLevel();
   if (e.code === 'Enter' && S.state === 'gameover') restartGame();
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].indexOf(e.code) >= 0) e.preventDefault();
 });
@@ -706,7 +863,7 @@ var rotateDismissBtn = document.getElementById('rotateDismiss');
 var rotateDismissed = false;
 var _touchPlaying = false, _hintShown = false;
 var joyId = null, lookId = null, lookLastX = 0, lookLastY = 0, joyCX = 0, joyCY = 0;
-var JOY_R = 45; // knob travel radius (px)
+var JOY_R = 32; // knob travel radius (px) — 112px base, 48px knob
 function joyMove(t) {
   var dx = t.clientX - joyCX, dy = t.clientY - joyCY;
   var len = Math.hypot(dx, dy);
@@ -718,7 +875,7 @@ function joyMove(t) {
 if (IS_TOUCH) {
   document.body.classList.add('touch');
   var ammoHint = document.querySelector('#bottomRight .small');
-  if (ammoHint) ammoHint.textContent = 'PAC-8 LONGSHORE · TAP ⟳ TO RELOAD';
+  if (ammoHint) ammoHint.textContent = 'TAP TO RELOAD';
   if (rotateDismissBtn) rotateDismissBtn.addEventListener('click', function () { rotateDismissed = true; if (rotateHint) rotateHint.style.display = 'none'; });
   if (joyBase) {
     joyBase.addEventListener('touchstart', function (e) {
@@ -748,12 +905,18 @@ if (IS_TOUCH) {
     joyBase.addEventListener('touchcancel', joyEnd);
   }
   // drag anywhere else on screen to look (controls handle their own touches)
+  // + double-tap recognizer (GPT guide §5): 2 taps < 280ms, moved < 12px =
+  // exactly 1 shot. The first tap only starts aiming; joystick / FIRE
+  // touches never reach here (they start on #touchUI and are filtered out).
+  var lastTapTime = 0, tapStartX = 0, tapStartY = 0, tapMoved = false;
+  var TAP_WINDOW = 280, TAP_SLOP = 12;
   document.addEventListener('touchstart', function (e) {
     if (S.state !== 'playing') return;
     if (e.target.closest && e.target.closest('#touchUI')) return;
     if (lookId !== null) return;
     var t = e.changedTouches[0];
     lookId = t.identifier; lookLastX = t.clientX; lookLastY = t.clientY;
+    tapStartX = t.clientX; tapStartY = t.clientY; tapMoved = false;
     e.preventDefault();
   }, { passive: false });
   document.addEventListener('touchmove', function (e) {
@@ -765,13 +928,21 @@ if (IS_TOUCH) {
         S.pitch -= (t.clientY - lookLastY) * 0.0045;
         S.pitch = Math.max(-1.45, Math.min(1.45, S.pitch));
         lookLastX = t.clientX; lookLastY = t.clientY;
+        if (Math.hypot(t.clientX - tapStartX, t.clientY - tapStartY) > TAP_SLOP) tapMoved = true;
         e.preventDefault();
       }
     }
   }, { passive: false });
   var lookEnd = function (e) {
     for (var i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === lookId) lookId = null;
+      if (e.changedTouches[i].identifier === lookId) {
+        lookId = null;
+        if (S.state === 'playing' && !tapMoved) {
+          var now = performance.now();
+          if (now - lastTapTime < TAP_WINDOW) { lastTapTime = 0; fireWeapon(); }
+          else lastTapTime = now;
+        }
+      }
     }
   };
   document.addEventListener('touchend', lookEnd);
@@ -960,44 +1131,6 @@ function updateTracers(dt) {
   });
 }
 
-/* ---------- drones ("Gull") ---------- */
-var drones = [];
-var droneBodyGeo = new THREE.BoxGeometry(0.9, 0.32, 0.9);
-var droneVertGeo = new THREE.BoxGeometry(0.28, 0.5, 0.28);
-var rotorGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.03, 18);
-var eyeGeo = new THREE.SphereGeometry(0.09, 10, 8);
-function spawnDrone(wave) {
-  var g = new THREE.Group();
-  var bodyMat = new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.4, metalness: 0.8, envMapIntensity: 0.8 });
-  var body = new THREE.Mesh(droneBodyGeo, bodyMat); body.castShadow = true; g.add(body);
-  var vert = new THREE.Mesh(droneVertGeo, bodyMat); vert.position.y = -0.1; g.add(vert);
-  var eyeMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2222, emissiveIntensity: 2.5 });
-  var eye = new THREE.Mesh(eyeGeo, eyeMat); eye.position.set(0, 0, 0.48); g.add(eye);
-  var rotorMat = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.3, metalness: 0.9, transparent: true, opacity: 0.75 });
-  var r1 = new THREE.Mesh(rotorGeo, rotorMat); r1.position.set(-0.55, 0.2, 0); g.add(r1);
-  var r2 = new THREE.Mesh(rotorGeo, rotorMat); r2.position.set(0.55, 0.2, 0); g.add(r2);
-  var lampMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xff3333, emissiveIntensity: 3 });
-  var lamp = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), lampMat);
-  lamp.position.set(0, 0.22, -0.3); g.add(lamp);
-  var ang = rnd(0, Math.PI * 2), rad = rnd(30, 38);
-  g.position.set(Math.cos(ang) * rad, rnd(4.5, 8.5), Math.sin(ang) * rad);
-  scene.add(g);
-  var hits = 2 + Math.floor(wave / 3);
-  var d = {
-    group: g, body: body, eyeMat: eyeMat, rotors: [r1, r2], lamp: lamp,
-    hp: hits * CFG.gunDamage, maxHp: hits * CFG.gunDamage,
-    speed: Math.min(11, CFG.droneBaseSpeed + 0.6 * wave),
-    attackCd: Math.max(0.9, CFG.droneAttackCd - 0.08 * wave),
-    damage: Math.min(14, CFG.droneDamageBase + wave),
-    // wave 1: drones hold their first shot ~4s longer, so the player lives
-    // long enough to meet the first raiders (wave 1 only, no easier later)
-    attackTimer: wave === 1 ? rnd(4.0, 6.0) : rnd(0.8, 1.6),
-    telegraph: 0, bob: rnd(0, 6.28), strafe: Math.random() < 0.5 ? 1 : -1
-  };
-  body.userData.drone = d; r1.userData.drone = d; r2.userData.drone = d;
-  drones.push(d);
-  return d;
-}
 function segmentBlocked(x1, y1, z1, x2, y2, z2) {
   // slab test vs container AABBs (y range 0..5.2)
   var dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
@@ -1019,61 +1152,6 @@ function segmentBlocked(x1, y1, z1, x2, y2, z2) {
   }
   return false;
 }
-function updateDrones(dt) {
-  var px = camera.position.x, pz = camera.position.z;
-  for (var i = drones.length - 1; i >= 0; i--) {
-    var d = drones[i], g = d.group;
-    g.rotation.y += dt * 0.6;
-    d.rotors[0].rotation.y += dt * 40; d.rotors[1].rotation.y -= dt * 40;
-    d.lamp.material.emissiveIntensity = 2 + Math.sin(S.time * 6 + d.bob) * 1.6;
-    var dx = px - g.position.x, dz = pz - g.position.z;
-    var dist = Math.hypot(dx, dz);
-    var dirx = dx / (dist || 1), dirz = dz / (dist || 1);
-    var targetY = 3.2 + Math.sin(S.time * 1.3 + d.bob) * 1.2;
-    if (dist > 11) {
-      g.position.x += dirx * d.speed * dt;
-      g.position.z += dirz * d.speed * dt;
-    } else {
-      // orbit-strafe at range, keep pressure on
-      g.position.x += -dirz * d.strafe * d.speed * 0.45 * dt;
-      g.position.z += dirx * d.strafe * d.speed * 0.45 * dt;
-      if (Math.random() < dt * 0.25) d.strafe *= -1;
-    }
-    g.position.y += (targetY - g.position.y) * Math.min(1, dt * 1.5);
-    // face the player
-    g.lookAt(px, g.position.y, pz);
-    // attack
-    d.attackTimer -= dt;
-    if (d.telegraph > 0) {
-      d.telegraph -= dt;
-      d.eyeMat.emissiveIntensity = 9;
-      if (d.telegraph <= 0) {
-        droneFire(d);
-        d.eyeMat.emissiveIntensity = 2.5;
-        d.attackTimer = d.attackCd * rnd(0.9, 1.25);
-      }
-    } else if (d.attackTimer <= 0 && dist < CFG.droneAttackRange) {
-      if (!segmentBlocked(g.position.x, g.position.y, g.position.z, px, 1.5, pz)) d.telegraph = 0.35;
-      else d.attackTimer = 0.6;
-    }
-  }
-}
-function droneFire(d) {
-  var from = d.group.position;
-  var to = { x: camera.position.x, y: 1.45, z: camera.position.z };
-  spawnTracer(from.x, from.y, from.z, to.x, to.y, to.z, 0xff4444);
-  noiseBurst(0.1, 900, 1, 0.35, 200);
-  damagePlayer(d.damage, 'gull');
-}
-function killDrone(d, silent) {
-  var p = d.group.position;
-  spawnBurst(p.x, p.y, p.z, 42, 0xff7722, 7);
-  spawnBurst(p.x, p.y, p.z, 18, 0xffcc66, 5);
-  if (!silent) { sfx.explode(); S.score += 100; S.kills++; flashHit(); }
-  scene.remove(d.group);
-  drones.splice(drones.indexOf(d), 1);
-  updateHUD();
-}
 function damagePlayer(amount, src) {
   if (S.state !== 'playing' || S.hp <= 0) return;
   S.hp = Math.max(0, S.hp - amount);
@@ -1092,30 +1170,60 @@ function damagePlayer(amount, src) {
 var raiders = [];
 var dyingRaiders = []; // {group, t} — fall + sink animation after death
 
-// procedural fabric camo (runtime canvas — 0 extra file bytes)
-function makeCamoTexture() {
-  var c = document.createElement('canvas'); c.width = c.height = 128;
-  var x = c.getContext('2d');
-  x.fillStyle = '#28324a'; x.fillRect(0, 0, 128, 128);
-  var cols = ['#232c3d', '#35415a', '#1d2531', '#3d4a63', '#2e3a4e'];
-  for (var i = 0; i < 80; i++) {
-    x.fillStyle = cols[i % cols.length];
-    x.globalAlpha = 0.22 + Math.random() * 0.3;
-    var r = 4 + Math.random() * 15;
-    x.beginPath(); x.ellipse(Math.random() * 128, Math.random() * 128, r, r * 0.55, Math.random() * 3, 0, 6.29); x.fill();
-  }
-  x.globalAlpha = 1;
-  var t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+/* ---------- raider textures (GPT guide §3): 4 shared procedural canvas
+   textures, seeded so every load looks identical — the same technique as
+   the container textures, so raiders belong to the same wet-port world.
+   Palette: rain-soaked olive/grey, no bright arcade blue. ---------- */
+function makeRaiderTexture(kind, seed) {
+  var palettes = {
+    uniform: ['#4B5747', '#69735A'],
+    dark: ['#343E38', '#566057'],
+    vest: ['#354239', '#78816B'],
+    helmet: ['#53624E', '#82785C'],
+    rifle: ['#20292B', '#66706D']
+  };
+  var pal = palettes[kind] || palettes.uniform;
+  var n = seed >>> 0;
+  function srand() { n = (n * 1664525 + 1013904223) >>> 0; return n / 4294967296; }
+  var t = canvasTex(256, 256, function (g, w, h) {
+    g.fillStyle = pal[0]; g.fillRect(0, 0, w, h);
+    // ~420 camo / wear ellipses
+    for (var i = 0; i < 420; i++) {
+      g.fillStyle = pal[1];
+      g.globalAlpha = 0.25 + srand() * 0.45;
+      var r = 4 + srand() * 18;
+      g.beginPath(); g.ellipse(srand() * w, srand() * h, r, r * (0.4 + srand() * 0.4), srand() * 3, 0, 6.29); g.fill();
+    }
+    // ~65 scratches
+    g.strokeStyle = '#B3A27A';
+    for (var j = 0; j < 65; j++) {
+      g.globalAlpha = 0.15 + srand() * 0.2;
+      g.lineWidth = 1 + srand() * 1.5;
+      var x = srand() * w, y = srand() * h, a = srand() * 3, l = 6 + srand() * 22;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    }
+    g.globalAlpha = 1;
+    if (kind === 'vest') {
+      g.fillStyle = '#D0B77C'; g.font = 'bold 17px monospace'; g.textAlign = 'center';
+      g.fillText('PORT 07', w / 2, h / 2);
+    }
+  }, [1, 1]);
+  t.anisotropy = 2;
   return t;
 }
-var raiderCamo = makeCamoTexture();
-var raiderUniformMat = new THREE.MeshStandardMaterial({ map: raiderCamo, color: 0xbfc8dd, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.55 });
-var raiderArmorMat = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.5, metalness: 0.35, envMapIntensity: 0.5 });
-var raiderDarkMat = new THREE.MeshStandardMaterial({ color: 0x12161d, roughness: 0.55, metalness: 0.4, envMapIntensity: 0.5 });
-var raiderAccentMat = new THREE.MeshStandardMaterial({ color: 0x4a5a75, roughness: 0.5, metalness: 0.4, envMapIntensity: 0.5 });
-var raiderAmberMat = new THREE.MeshStandardMaterial({ color: 0x442200, emissive: 0xffaa22, emissiveIntensity: 1.2 });
-var raiderVisorBase = new THREE.MeshStandardMaterial({ color: 0x221100, emissive: 0xffaa22, emissiveIntensity: 2.2 });
+var raiderTex = {
+  uniform: makeRaiderTexture('uniform', 1337),
+  vest: makeRaiderTexture('vest', 7331),
+  helmet: makeRaiderTexture('helmet', 9021),
+  rifle: makeRaiderTexture('rifle', 4411)
+};
+// 4 shared materials for ALL raiders — no new texture is ever made per spawn
+var raiderUniformMat = new THREE.MeshStandardMaterial({ map: raiderTex.uniform, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.55 });
+var raiderVestMat = new THREE.MeshStandardMaterial({ map: raiderTex.vest, roughness: 0.85, metalness: 0.05, envMapIntensity: 0.5 });
+var raiderHelmetMat = new THREE.MeshStandardMaterial({ map: raiderTex.helmet, roughness: 0.8, metalness: 0.1, envMapIntensity: 0.5 });
+var raiderRifleMat = new THREE.MeshStandardMaterial({ map: raiderTex.rifle, roughness: 0.45, metalness: 0.7, envMapIntensity: 0.6 });
+var raiderMarkMat = new THREE.MeshStandardMaterial({ color: 0x331100, emissive: 0xE16C45, emissiveIntensity: 1.0 });
+var raiderVisorBase = new THREE.MeshStandardMaterial({ color: 0x221100, emissive: 0xFF9C62, emissiveIntensity: 2.2 });
 // shared geometries (one set for all raiders)
 var raiderTorsoGeo = new THREE.CylinderGeometry(0.26, 0.20, 0.66, 12); // chest -> waist taper
 var raiderHeadGeo = new THREE.SphereGeometry(0.155, 18, 14);            // helmet dome
@@ -1131,87 +1239,137 @@ var raiderPackGeo = new THREE.BoxGeometry(0.36, 0.44, 0.15);
 var raiderVisorGeo = new THREE.CylinderGeometry(0.158, 0.158, 0.05, 18, 1, true, -0.85, 1.7); // curved band, front of helmet
 var raiderFaceGeo = new THREE.CylinderGeometry(0.16, 0.15, 0.13, 14, 1, true, -0.65, 1.3);   // mandible guard
 var RAIDER_SPAWNS = [[-12, -34], [0, -34], [12, -34], [-12, 34], [0, 34], [12, 34]]; // open lane ends, clear of containers
-function spawnRaider(wave) {
+/* ---------- spawn point picker (GPT guide §7.3) ----------
+   Level 1: the first 3 raiders spawn in the player's view (14–24 units,
+   inside the forward cone, clear line of sight) so the player sees them
+   immediately; the 4th comes from a lane end. Later levels: any direction,
+   still on open ground with a real approach path. */
+function pointInCollider(x, z, margin) {
+  for (var i = 0; i < colliders.length; i++) {
+    var c = colliders[i];
+    if (x > c.minX - margin && x < c.maxX + margin && z > c.minZ - margin && z < c.maxZ + margin) return true;
+  }
+  return false;
+}
+function pickSpawnPoint(preferVisible) {
+  var px = camera.position.x, pz = camera.position.z;
+  var fx = -Math.sin(S.yaw), fz = -Math.cos(S.yaw);
+  for (var t = 0; t < 40; t++) {
+    var sx, sz, dist;
+    if (preferVisible && t < 30) {
+      var ang = (Math.random() * 2 - 1) * 0.7; // ±40° forward cone
+      dist = rnd(14, 24);
+      var dx = fx * Math.cos(ang) - fz * Math.sin(ang);
+      var dz = fx * Math.sin(ang) + fz * Math.cos(ang);
+      sx = px + dx * dist; sz = pz + dz * dist;
+    } else {
+      var a = rnd(0, Math.PI * 2); dist = rnd(14, 26);
+      sx = px + Math.cos(a) * dist; sz = pz + Math.sin(a) * dist;
+    }
+    if (Math.abs(sx) > CFG.bounds - 2 || Math.abs(sz) > CFG.bounds - 2) continue;
+    if (pointInCollider(sx, sz, 0.6)) continue;
+    var okRaider = true;
+    raiders.forEach(function (r) { if (Math.hypot(r.group.position.x - sx, r.group.position.z - sz) < 2) okRaider = false; });
+    if (!okRaider) continue;
+    if (preferVisible && segmentBlocked(sx, 1.4, sz, px, 1.5, pz)) continue;
+    return [sx, sz];
+  }
+  return null;
+}
+function spawnRaider(type, level) {
+  var cls = CLASSES[type] || CLASSES.regular;
+  var mult = levelMultipliers(level || 1);
   var g = new THREE.Group();
   // torso (hit mesh) — tapered cylinder, chest wider than waist, fabric camo
   var torso = new THREE.Mesh(raiderTorsoGeo, raiderUniformMat);
   torso.scale.set(1, 1, 0.62); torso.position.y = 1.11; torso.castShadow = true; g.add(torso);
   // plate carrier front + back, amber chest tape (same amber as the visor)
-  var plateF = new THREE.Mesh(raiderPlateGeo, raiderArmorMat); plateF.position.set(0, 1.16, 0.175); plateF.castShadow = true; g.add(plateF);
-  var plateB = new THREE.Mesh(raiderPlateGeo, raiderArmorMat); plateB.position.set(0, 1.16, -0.175); g.add(plateB);
-  var tape = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.025, 0.012), raiderAmberMat); tape.position.set(0, 1.32, 0.215); g.add(tape);
+  var plateF = new THREE.Mesh(raiderPlateGeo, raiderVestMat); plateF.position.set(0, 1.16, 0.175); plateF.castShadow = true; g.add(plateF);
+  var plateB = new THREE.Mesh(raiderPlateGeo, raiderVestMat); plateB.position.set(0, 1.16, -0.175); g.add(plateB);
+  var tape = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.025, 0.012), raiderMarkMat); tape.position.set(0, 1.32, 0.215); g.add(tape);
   // belt + pouch, backpack + bedroll, shoulder pads
-  var belt = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.08, 12), raiderDarkMat);
+  var belt = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.08, 12), raiderVestMat);
   belt.scale.set(1, 1, 0.62); belt.position.y = 0.83; g.add(belt);
-  var pouch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.06), raiderArmorMat); pouch.position.set(0.13, 0.83, 0.13); g.add(pouch);
+  var pouch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.06), raiderVestMat); pouch.position.set(0.13, 0.83, 0.13); g.add(pouch);
   var pack = new THREE.Mesh(raiderPackGeo, raiderUniformMat); pack.position.set(0, 1.18, -0.25); pack.castShadow = true; g.add(pack);
-  var roll = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.36, 10), raiderArmorMat);
+  var roll = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.36, 10), raiderVestMat);
   roll.rotation.z = Math.PI / 2; roll.position.set(0, 1.43, -0.25); g.add(roll);
-  var padL = new THREE.Mesh(raiderPadGeo, raiderArmorMat); padL.scale.set(1, 0.55, 1); padL.position.set(-0.30, 1.43, 0); g.add(padL);
-  var padR = new THREE.Mesh(raiderPadGeo, raiderArmorMat); padR.scale.set(1, 0.55, 1); padR.position.set(0.30, 1.43, 0); g.add(padR);
+  var padL = new THREE.Mesh(raiderPadGeo, raiderVestMat); padL.scale.set(1, 0.55, 1); padL.position.set(-0.30, 1.43, 0); g.add(padL);
+  var padR = new THREE.Mesh(raiderPadGeo, raiderVestMat); padR.scale.set(1, 0.55, 1); padR.position.set(0.30, 1.43, 0); g.add(padR);
   // neck, helmet dome (hit mesh) + brim, mandible guard, curved amber visor
-  var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 10), raiderDarkMat); neck.position.y = 1.47; g.add(neck);
+  var neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 10), raiderVestMat); neck.position.y = 1.47; g.add(neck);
   var visorMat = raiderVisorBase.clone(); // per-raider so the telegraph flash is independent
-  var head = new THREE.Mesh(raiderHeadGeo, raiderDarkMat); head.position.y = 1.62; head.castShadow = true; g.add(head);
-  var brim = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.168, 0.025, 18), raiderArmorMat); brim.position.y = 1.615; g.add(brim);
-  var face = new THREE.Mesh(raiderFaceGeo, raiderArmorMat); face.position.y = 1.545; g.add(face);
+  var head = new THREE.Mesh(raiderHeadGeo, raiderHelmetMat); head.position.y = 1.62; head.castShadow = true; g.add(head);
+  var brim = new THREE.Mesh(new THREE.CylinderGeometry(0.168, 0.168, 0.025, 18), raiderHelmetMat); brim.position.y = 1.615; g.add(brim);
+  var face = new THREE.Mesh(raiderFaceGeo, raiderHelmetMat); face.position.y = 1.545; g.add(face);
   var visor = new THREE.Mesh(raiderVisorGeo, visorMat); visor.position.y = 1.63; g.add(visor);
   // legs pivot at the hip so they swing while walking (tapered + knee pad + boot)
   var legL = new THREE.Group(); legL.position.set(-0.13, 0.78, 0);
   var legLMesh = new THREE.Mesh(raiderLegGeo, raiderUniformMat); legLMesh.position.y = -0.38; legLMesh.castShadow = true; legL.add(legLMesh);
-  var kneeL = new THREE.Mesh(raiderKneeGeo, raiderArmorMat); kneeL.scale.set(1, 1, 0.6); kneeL.position.set(0, -0.38, 0.075); legL.add(kneeL);
-  var bootL = new THREE.Mesh(raiderBootGeo, raiderDarkMat); bootL.position.set(0, -0.735, 0.05); legL.add(bootL);
+  var kneeL = new THREE.Mesh(raiderKneeGeo, raiderVestMat); kneeL.scale.set(1, 1, 0.6); kneeL.position.set(0, -0.38, 0.075); legL.add(kneeL);
+  var bootL = new THREE.Mesh(raiderBootGeo, raiderVestMat); bootL.position.set(0, -0.735, 0.05); legL.add(bootL);
   g.add(legL);
   var legR = new THREE.Group(); legR.position.set(0.13, 0.78, 0);
   var legRMesh = new THREE.Mesh(raiderLegGeo, raiderUniformMat); legRMesh.position.y = -0.38; legRMesh.castShadow = true; legR.add(legRMesh);
-  var kneeR = new THREE.Mesh(raiderKneeGeo, raiderArmorMat); kneeR.scale.set(1, 1, 0.6); kneeR.position.set(0, -0.38, 0.075); legR.add(kneeR);
-  var bootR = new THREE.Mesh(raiderBootGeo, raiderDarkMat); bootR.position.set(0, -0.735, 0.05); legR.add(bootR);
+  var kneeR = new THREE.Mesh(raiderKneeGeo, raiderVestMat); kneeR.scale.set(1, 1, 0.6); kneeR.position.set(0, -0.38, 0.075); legR.add(kneeR);
+  var bootR = new THREE.Mesh(raiderBootGeo, raiderVestMat); bootR.position.set(0, -0.735, 0.05); legR.add(bootR);
   g.add(legR);
   // rifle — built once, held at chest height pointing forward (+z); arms are
   // posed onto it below, so the whole assembly stays rigid while walking
   var rifle = new THREE.Group(); rifle.position.set(0, 1.30, 0.30);
-  var receiver = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.36), raiderDarkMat); receiver.castShadow = true; rifle.add(receiver);
-  var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.30, 8), raiderDarkMat);
+  var receiver = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.13, 0.36), raiderRifleMat); receiver.castShadow = true; rifle.add(receiver);
+  var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.30, 8), raiderRifleMat);
   barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.01, 0.30); rifle.add(barrel);
-  var muzzleRing = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.03, 10), raiderAmberMat);
+  var muzzleRing = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.03, 10), raiderMarkMat);
   muzzleRing.rotation.x = Math.PI / 2; muzzleRing.position.set(0, 0.01, 0.44); rifle.add(muzzleRing);
-  var handguard = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.09, 0.24), raiderAccentMat); handguard.position.set(0, 0.005, 0.17); rifle.add(handguard);
-  var stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.18), raiderDarkMat); stock.position.set(0, -0.01, -0.25); rifle.add(stock);
-  var magazine = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.15, 0.09), raiderDarkMat); magazine.rotation.x = 0.15; magazine.position.set(0, -0.12, 0.03); rifle.add(magazine);
-  var grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.11, 0.06), raiderDarkMat); grip.rotation.x = 0.25; grip.position.set(0, -0.11, -0.11); rifle.add(grip);
-  var sight = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.12), raiderDarkMat); sight.position.set(0, 0.09, -0.03); rifle.add(sight);
+  var handguard = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.09, 0.24), raiderRifleMat); handguard.position.set(0, 0.005, 0.17); rifle.add(handguard);
+  var stock = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.18), raiderRifleMat); stock.position.set(0, -0.01, -0.25); rifle.add(stock);
+  var magazine = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.15, 0.09), raiderRifleMat); magazine.rotation.x = 0.15; magazine.position.set(0, -0.12, 0.03); rifle.add(magazine);
+  var grip = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.11, 0.06), raiderRifleMat); grip.rotation.x = 0.25; grip.position.set(0, -0.11, -0.11); rifle.add(grip);
+  var sight = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.12), raiderRifleMat); sight.position.set(0, 0.09, -0.03); rifle.add(sight);
   var muzzleTip = new THREE.Object3D(); muzzleTip.position.set(0, 0.01, 0.47); rifle.add(muzzleTip);
   g.add(rifle);
   // arms pivot at the shoulder; aim each arm's -y axis straight at its grip point
   // (right hand -> pistol grip, left hand -> handguard) so the gloves land on the rifle
   var armL = new THREE.Group(); armL.position.set(-0.32, 1.44, 0.02);
   var armLMesh = new THREE.Mesh(raiderArmGeo, raiderUniformMat); armLMesh.position.y = -0.28; armL.add(armLMesh);
-  var gloveL = new THREE.Mesh(raiderGloveGeo, raiderDarkMat); gloveL.position.y = -0.56; armL.add(gloveL);
+  var gloveL = new THREE.Mesh(raiderGloveGeo, raiderVestMat); gloveL.position.y = -0.56; armL.add(gloveL);
   armL.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(0.32, -0.135, 0.45).normalize());
   g.add(armL);
   var armR = new THREE.Group(); armR.position.set(0.32, 1.44, 0.02);
   var armRMesh = new THREE.Mesh(raiderArmShortGeo, raiderUniformMat); armRMesh.position.y = -0.24; armR.add(armRMesh);
-  var gloveR = new THREE.Mesh(raiderGloveGeo, raiderDarkMat); gloveR.position.y = -0.48; armR.add(gloveR);
+  var gloveR = new THREE.Mesh(raiderGloveGeo, raiderVestMat); gloveR.position.y = -0.48; armR.add(gloveR);
   armR.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), new THREE.Vector3(-0.32, -0.25, 0.17).normalize());
   g.add(armR);
-  // spawn on open ground at a lane end, away from the player
-  var px = camera.position.x, pz = camera.position.z, spot = null;
-  for (var tries = 0; tries < 8 && !spot; tries++) {
-    var s = RAIDER_SPAWNS[Math.floor(Math.random() * RAIDER_SPAWNS.length)];
-    var sx = s[0] + rnd(-2, 2), sz = s[1] + rnd(-2, 2);
-    if (Math.hypot(sx - px, sz - pz) > 12) spot = [sx, sz];
+  // spawn: level 1 first 3 in view, otherwise anywhere open; lane ends as fallback
+  var preferVisible = (S.level === 1 && gameState.spawned < 3);
+  var spot = pickSpawnPoint(preferVisible);
+  if (!spot) {
+    var px = camera.position.x, pz = camera.position.z;
+    for (var tries = 0; tries < 8 && !spot; tries++) {
+      var s = RAIDER_SPAWNS[Math.floor(Math.random() * RAIDER_SPAWNS.length)];
+      var sx = s[0] + rnd(-2, 2), sz = s[1] + rnd(-2, 2);
+      if (Math.hypot(sx - px, sz - pz) > 12) spot = [sx, sz];
+    }
+    if (!spot) spot = [RAIDER_SPAWNS[0][0], RAIDER_SPAWNS[0][1]];
   }
-  if (!spot) spot = [RAIDER_SPAWNS[0][0], RAIDER_SPAWNS[0][1]];
   g.position.set(spot[0], 0, spot[1]);
+  g.scale.setScalar(cls.scale); // heavy reads bigger, runner slightly smaller
   scene.add(g);
+  var id = newEnemyId();
+  g.userData.isEnemyGroup = true;
+  g.userData.enemyId = id;
   var r = {
-    group: g, torso: torso, head: head, legL: legL, legR: legR, armL: armL, armR: armR,
+    id: id, cls: type, group: g, torso: torso, head: head, legL: legL, legR: legR, armL: armL, armR: armR,
     legLMesh: legLMesh, legRMesh: legRMesh, visorMat: visorMat, muzzleTip: muzzleTip,
     rifle: rifle, recoil: 0,
-    hp: CFG.raiderHp, maxHp: CFG.raiderHp, // 105 = 3 body shots at gunDamage 35
-    speed: CFG.raiderSpeed,
-    attackCd: CFG.raiderAttackCd, attackTimer: rnd(1.0, 2.0), telegraph: 0,
-    damage: CFG.raiderDamage, walkPhase: rnd(0, 6.28),
+    hp: Math.round(cls.hp * mult.hp), maxHp: Math.round(cls.hp * mult.hp),
+    speed: cls.speed * mult.spd,
+    attackCd: 2.0, attackTimer: rnd(1.0, 2.0), telegraph: 0,
+    damage: Math.round(cls.damage * mult.dmg), score: cls.score,
+    stopRange: cls.stopRange, attackRange: cls.attackRange,
+    walkPhase: rnd(0, 6.28), visibleSince: null,
+    strafeDir: Math.random() < 0.5 ? 1 : -1, strafeT: rnd(1, 2),
     // unstuck bookkeeping (see updateRaiders): progress window + sidestep side
     progX: spot[0], progZ: spot[1], progT: 0, stuckT: 0, side: 0, sideT: 0
   };
@@ -1221,6 +1379,9 @@ function spawnRaider(wave) {
   g.traverse(function (o) { if (o.isMesh) o.userData.raider = r; });
   head.userData.head = true;
   raiders.push(r);
+  gameState.enemies.set(id, r);
+  gameState.spawned++; gameState.alive++;
+  gsEvent('RAIDER_SPAWNED', { id: id, cls: type, at: spot });
   return r;
 }
 function updateRaiders(dt) {
@@ -1238,7 +1399,7 @@ function updateRaiders(dt) {
     // it has a line — but never closer than 1.2m, so it can't clip into
     // the player (a container between them keeps them ~3m apart anyway).
     var losBlocked = segmentBlocked(g.position.x, 1.4, g.position.z, px, 1.5, pz);
-    if (dist > CFG.raiderStopRange || (dist > 1.2 && losBlocked)) {
+    if (dist > r.stopRange || (dist > 1.2 && losBlocked)) {
       // walk toward the player, blocked by containers like the player is
       var dirx = dx / (dist || 1), dirz = dz / (dist || 1);
       var mx = dirx, mz = dirz;
@@ -1295,6 +1456,18 @@ function updateRaiders(dt) {
       r.legL.rotation.x *= 0.8; r.legR.rotation.x *= 0.8;
       g.position.y *= 0.8;
       g.rotateX(0.03); // ready stance
+      if (r.cls === 'runner') {
+        // dock sprinter circles its target instead of standing still
+        r.strafeT -= dt;
+        if (r.strafeT <= 0) { r.strafeDir *= -1; r.strafeT = rnd(1, 2); }
+        var tx = -dz / (dist || 1) * r.strafeDir, tz = dx / (dist || 1) * r.strafeDir;
+        var rp = collideCircle(g.position.x + tx * 1.5 * dt, g.position.z + tz * 1.5 * dt, 0.4);
+        g.position.x = Math.max(-CFG.bounds, Math.min(CFG.bounds, rp[0]));
+        g.position.z = Math.max(-CFG.bounds, Math.min(CFG.bounds, rp[1]));
+        r.walkPhase += dt * 3.5;
+        var sw2 = Math.sin(r.walkPhase) * 0.55;
+        r.legL.rotation.x = sw2; r.legR.rotation.x = -sw2;
+      }
     }
     // rifle: raise to aim during the telegraph, kick back when firing
     r.recoil = Math.max(0, r.recoil - dt * 6);
@@ -1311,7 +1484,7 @@ function updateRaiders(dt) {
         r.visorMat.emissiveIntensity = 2.2;
         r.attackTimer = r.attackCd * rnd(0.9, 1.25);
       }
-    } else if (r.attackTimer <= 0 && dist < CFG.raiderAttackRange) {
+    } else if (r.attackTimer <= 0 && dist < r.attackRange) {
       if (!segmentBlocked(g.position.x, 1.4, g.position.z, px, 1.5, pz)) r.telegraph = 0.5;
       else r.attackTimer = 0.6;
     }
@@ -1338,10 +1511,14 @@ function killRaider(r, silent) {
   if (idx < 0) return;
   raiders.splice(idx, 1);
   if (silent) { scene.remove(r.group); return; }
+  r.group.userData.isEnemyGroup = false; // dead: no longer counts as a scene enemy
+  gameState.enemies.delete(r.id);
+  gameState.alive--; gameState.killed++;
+  gsEvent('RAIDER_KILLED', { id: r.id, cls: r.cls });
   var p = r.group.position;
   spawnBurst(p.x, 1.1, p.z, 42, 0xff7722, 7);
   spawnBurst(p.x, 1.1, p.z, 18, 0xffcc66, 5);
-  sfx.explode(); S.score += CFG.raiderScore; S.kills++; flashHit();
+  sfx.explode(); S.score += r.score; S.kills++; S.levelKills++; flashHit();
   r.group.rotation.x = 0;
   dyingRaiders.push({ group: r.group, t: 0 });
   updateHUD();
@@ -1350,9 +1527,18 @@ function killRaider(r, silent) {
 /* ---------- shooting ---------- */
 var raycaster = new THREE.Raycaster();
 var shootPoint = new THREE.Vector3();
+/* one trigger pull, rate-limited: direct fireWeapon() calls (double-tap /
+   double-click / tap-to-fire) can never stack two shots inside one
+   fireInterval on top of the hold-to-fire loop. */
+function fireWeapon() {
+  if (S.state !== 'playing' || S.reloading) return;
+  shoot();
+}
 function shoot() {
+  if (S.time - S.lastShot < CFG.fireInterval) return; // rate guard for direct calls
   if (S.ammo <= 0) { sfx.dryFire(); startReload(); return; }
   S.ammo--; S.lastShot = S.time;
+  S.shotsFired++; // per-level accuracy counter
   recoil = 1;
   var mp = new THREE.Vector3(); muzzle.getWorldPosition(mp);
   flash.scale.set(0.6, 0.6, 1); flashLight.intensity = 60; flashUntil = S.time + 0.05;
@@ -1361,16 +1547,15 @@ function shoot() {
   raycaster.setFromCamera({ x: 0, y: 0 }, camera);
   raycaster.far = 120;
   var hitMeshes = [];
-  drones.forEach(function (d) { hitMeshes.push(d.body, d.rotors[0], d.rotors[1]); });
   raiders.forEach(function (r) { hitMeshes.push(r.torso, r.head, r.legLMesh, r.legRMesh); });
   var dhits = raycaster.intersectObjects(hitMeshes, false);
   var whits = raycaster.intersectObjects(scene.children, true);
-  // pick the nearest world hit for the impact point (ignore drones, raiders & gun & sky)
+  // pick the nearest world hit for the impact point (ignore raiders & gun & sky)
   var worldHit = null;
   for (var i = 0; i < whits.length; i++) {
     var o = whits[i].object;
     if (o === sky || o === sunSprite || o === rain || o === points) continue;
-    if (o.userData && (o.userData.drone || o.userData.raider)) continue;
+    if (o.userData && o.userData.raider) continue;
     var anc = o; while (anc) { if (anc === gun) break; anc = anc.parent; }
     if (anc === gun) continue;
     worldHit = whits[i]; break;
@@ -1379,13 +1564,10 @@ function shoot() {
     var hitObj = dhits[0].object;
     var dmg = CFG.gunDamage * (hitObj.userData.head ? 2 : 1); // headshot = double damage
     sfx.hit(); flashHit();
+    S.shotsHit++;
     spawnBurst(dhits[0].point.x, dhits[0].point.y, dhits[0].point.z, 10, 0xffcc44, 4);
     spawnTracer(mp.x, mp.y, mp.z, dhits[0].point.x, dhits[0].point.y, dhits[0].point.z, 0xffd27a);
-    if (hitObj.userData.drone) {
-      var d = hitObj.userData.drone;
-      d.hp -= dmg;
-      if (d.hp <= 0) killDrone(d);
-    } else if (hitObj.userData.raider) {
+    if (hitObj.userData.raider) {
       var r = hitObj.userData.raider;
       r.hp -= dmg;
       if (r.hp <= 0) killRaider(r);
@@ -1415,18 +1597,67 @@ function flashHit() {
   if (h) { h.style.opacity = '1'; setTimeout(function () { h.style.opacity = '0'; }, 120); }
 }
 
-/* ---------- waves / game flow ---------- */
-var spawnQueue = 0, raiderQueue = 0, spawnTimer = 0, waveClearTimer = -1;
+/* ---------- levels / game flow (GPT guide §4, §6) ---------- */
+var spawnList = [], spawnTimer = 0, spawnGroupLeft = 0, waveClearTimer = -1;
 var el = {};
-['hud', 'startScreen', 'pauseScreen', 'endScreen', 'waveBanner', 'objective', 'hpNum', 'ammoNum', 'scoreNum', 'waveNum', 'dronesNum', 'endTitle', 'endText', 'nextBtn', 'retryBtn', 'deployBtn', 'resumeBtn', 'restartBtn', 'menuBtn'].forEach(function (id) { el[id] = document.getElementById(id); });
+['hud', 'startScreen', 'pauseScreen', 'endScreen', 'waveBanner', 'objective', 'hpNum', 'ammoNum', 'scoreNum', 'waveNum', 'hostilesNum', 'endTitle', 'endText', 'nextBtn', 'retryBtn', 'deployBtn', 'resumeBtn', 'restartBtn', 'menuBtn'].forEach(function (id) { el[id] = document.getElementById(id); });
 function updateHUD() {
   if (!el.hpNum) return;
   el.hpNum.textContent = Math.ceil(S.hp);
   document.getElementById('hpBar').style.width = (S.hp / S.maxHp * 100) + '%';
   el.ammoNum.textContent = S.ammo + ' / ∞';
   el.scoreNum.textContent = S.score;
-  el.waveNum.textContent = 'WAVE ' + S.wave;
-  el.dronesNum.textContent = 'HOSTILES LEFT: ' + (drones.length + raiders.length + spawnQueue + raiderQueue);
+  el.waveNum.textContent = 'LEVEL ' + S.level;
+  el.hostilesNum.textContent = 'HOSTILES LEFT: ' + (raiders.length + spawnList.length);
+}
+/* ---------- radar / minimap (GPT guide §1) ----------
+   North-up world map, drawn from gameState.enemies (ground truth, 10 Hz).
+   Player: teal arrow. Enemies: dots coloured by class. Containers: brown. */
+var radarCanvas = document.getElementById('radar');
+var radarCtx = radarCanvas ? radarCanvas.getContext('2d') : null;
+var radarAcc = 0;
+if (radarCanvas) { radarCanvas.width = IS_TOUCH ? 92 : 176; radarCanvas.height = radarCanvas.width; }
+function drawRadar() {
+  if (!radarCtx) return;
+  var size = radarCanvas.width;
+  var g = radarCtx;
+  var scale = size / (CFG.bounds * 2); // world ±55 -> radar
+  var toX = function (x) { return (x + CFG.bounds) * scale; };
+  var toY = function (z) { return (z + CFG.bounds) * scale; }; // north (-z) at top
+  g.clearRect(0, 0, size, size);
+  g.fillStyle = 'rgba(13,23,29,0.88)'; g.fillRect(0, 0, size, size);
+  g.strokeStyle = '#253B3B'; g.lineWidth = 1;
+  var step = 10 * scale;
+  var gx, gy;
+  for (gx = step; gx < size; gx += step) { g.beginPath(); g.moveTo(gx, 0); g.lineTo(gx, size); g.stroke(); }
+  for (gy = step; gy < size; gy += step) { g.beginPath(); g.moveTo(0, gy); g.lineTo(size, gy); g.stroke(); }
+  // containers
+  g.fillStyle = '#9B7950';
+  colliders.forEach(function (c) {
+    g.fillRect(toX(c.minX), toY(c.minZ), (c.maxX - c.minX) * scale, (c.maxZ - c.minZ) * scale);
+  });
+  // north tick
+  g.fillStyle = '#E2B96D';
+  g.beginPath(); g.moveTo(size / 2, 3); g.lineTo(size / 2 - 4, 10); g.lineTo(size / 2 + 4, 10); g.closePath(); g.fill();
+  // enemy dots — straight from gameState.enemies (ground truth)
+  var dots = 0;
+  gameState.enemies.forEach(function (r) {
+    dots++;
+    g.fillStyle = CLASSES[r.cls].color;
+    g.beginPath(); g.arc(toX(r.group.position.x), toY(r.group.position.z), 3, 0, 6.29); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1; g.stroke();
+  });
+  radarDots = dots;
+  // player arrow + 18m attack-range ring (rotates with yaw; yaw 0 = north = up)
+  var px = toX(camera.position.x), py = toY(camera.position.z);
+  g.strokeStyle = '#78908A';
+  g.beginPath(); g.arc(px, py, 18 * scale, 0, 6.29); g.stroke();
+  g.save();
+  g.translate(px, py);
+  g.rotate(-S.yaw);
+  g.fillStyle = '#58D6C1';
+  g.beginPath(); g.moveTo(0, -6); g.lineTo(4.5, 5); g.lineTo(-4.5, 5); g.closePath(); g.fill();
+  g.restore();
 }
 function showBanner(text, sub) {
   el.waveBanner.innerHTML = text + (sub ? '<div class="sub">' + sub + '</div>' : '');
@@ -1436,54 +1667,95 @@ function showBanner(text, sub) {
 function setObjective(t) { if (el.objective) el.objective.textContent = t; }
 function startGame() {
   initAudio();
-  S.score = 0; S.kills = 0; S.hp = S.maxHp; S.ammo = CFG.magSize; S.wave = 0;
+  S.score = 0; S.kills = 0; S.levelKills = 0; S.hp = S.maxHp; S.ammo = CFG.magSize; S.level = 0;
   S.reloading = false; S.firing = false;
-  drones.slice().forEach(function (d) { killDrone(d, true); });
+  // fresh accounting for the run (before cleanup, so silent kills stay silent)
+  gameState.phase = 'ready'; gameState.level = 1; gameState.wave = 1;
+  gameState.spawned = 0; gameState.alive = 0; gameState.killed = 0;
+  gameState.enemies.clear(); gameState.events.length = 0; gameState.lastEvent = '-';
+  gsEvent('GAME_START');
   raiders.slice().forEach(function (r) { killRaider(r, true); });
   dyingRaiders.slice().forEach(function (d) { scene.remove(d.group); });
   dyingRaiders.length = 0;
-  raiderQueue = 0;
+  spawnList = [];
   el.startScreen.style.display = 'none'; el.endScreen.style.display = 'none'; el.pauseScreen.style.display = 'none';
   el.hud.style.display = 'block';
   S.state = 'playing';
   camera.position.set(0, CFG.eyeHeight, 16); S.yaw = 0; S.pitch = 0;
   updateHUD();
-  startWave(1);
+  startLevel(1);
   if (!S.fallback) requestLock();
   setBoot('boot ok · state=playing');
 }
-function startWave(n) {
-  S.wave = n;
-  var droneCount = 4 + 2 * n; // wave 1: 6 gulls
-  var raiderCount = 1 + n;    // wave 1: 2 raiders — mixed from the first wave
-  spawnQueue = droneCount; raiderQueue = raiderCount; spawnTimer = 0.5;
-  showBanner('WAVE ' + n, (droneCount + raiderCount) + ' HOSTILES INBOUND — GULLS + RAIDERS');
-  setObjective('CONTROL: Gulls in the sky, raiders on the ground — cut them all down. Wave ' + n + ' of the night shift.');
+function startLevel(n) {
+  S.level = n; gameState.level = n; gameState.wave = n;
+  gameState.spawned = 0; gameState.alive = 0; gameState.killed = 0;
+  gameState.enemies.clear();
+  S.shotsFired = 0; S.shotsHit = 0; S.levelKills = 0;
+  S.levelStartTime = S.time; S.levelRewarded = false;
+  var comp = levelComp(n);
+  spawnList = [];
+  var i;
+  for (i = 0; i < comp[0]; i++) spawnList.push('regular');
+  for (i = 0; i < comp[1]; i++) spawnList.push('heavy');
+  for (i = 0; i < comp[2]; i++) spawnList.push('runner');
+  for (i = spawnList.length - 1; i > 0; i--) { // shuffle the queue
+    var r = Math.floor(Math.random() * (i + 1)), tmp = spawnList[i];
+    spawnList[i] = spawnList[r]; spawnList[r] = tmp;
+  }
+  spawnGroupLeft = 0; spawnTimer = 0.5;
+  showBanner('LEVEL ' + n, spawnList.length + ' HOSTILES INBOUND');
+  setObjective('CONTROL: Raiders on foot — cut them all down. Level ' + n + ' of the night shift.');
   sfx.wave();
+  setPhase('spawning');
+  gsEvent('LEVEL_START', { level: n, comp: comp });
   updateHUD();
 }
-function nextWave() {
+function nextLevel() {
+  if (S.state !== 'waveclear') return; // one advance per clear, never twice
   el.endScreen.style.display = 'none';
   S.state = 'playing';
-  startWave(S.wave + 1);
+  setPhase('next-level');
+  startLevel(S.level + 1);
   if (!S.fallback) requestLock();
 }
-function waveCleared() {
-  var bonus = CFG.waveBonus + 50 * S.wave;
-  S.score += bonus;
+function levelCleared() {
+  if (S.levelRewarded) return; // reward exactly once per level
+  S.levelRewarded = true;
+  var acc = S.shotsFired > 0 ? S.shotsHit / S.shotsFired : 0;
+  var accBonus = Math.round(acc * 100); // 0–100
+  var reward = CFG.clearBonus + accBonus;
+  S.score += reward;
+  var timeSec = Math.max(0, Math.round(S.time - S.levelStartTime));
+  var mm = Math.floor(timeSec / 60), ss = timeSec % 60;
+  var timeStr = (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
   S.state = 'waveclear';
+  setPhase('wave-clear');
+  gsEvent('WAVE_CLEARED', { level: S.level, reward: reward });
   sfx.clear();
-  el.endTitle.textContent = 'WAVE ' + S.wave + ' CLEAR';
-  el.endText.textContent = 'All hostiles down. Bonus +' + bonus + ' · Score ' + S.score + ' · Kills ' + S.kills;
+  el.endTitle.textContent = 'AREA SECURED';
+  el.endText.innerHTML =
+    '<div style="letter-spacing:3px;color:#e8b73c">LEVEL ' + S.level + ' CLEARED</div>' +
+    '<div style="margin-top:10px;font-size:15px;line-height:1.9;color:#d8d2c2">' +
+    'ELIMINATIONS ' + S.levelKills + '<br>' +
+    'ACCURACY ' + Math.round(acc * 100) + '%<br>' +
+    'REWARD +' + reward + '<br>' +
+    'TIME ' + timeStr + '<br>' +
+    '<span id="clearCountdown">NEXT LEVEL IN 5</span>' +
+    '</div>';
   el.nextBtn.style.display = 'inline-block'; el.retryBtn.style.display = 'none';
   el.endScreen.style.display = 'flex';
   if (document.pointerLockElement === canvas) document.exitPointerLock();
+  waveClearTimer = 5;
+  setPhase('intermission');
   updateHUD();
 }
 function gameOver() {
   S.state = 'gameover';
+  setPhase('gameover');
+  gsEvent('GAME_OVER', { level: S.level, score: S.score });
   el.endTitle.textContent = 'OVERRUN';
-  el.endText.textContent = 'The berth is lost. Score ' + S.score + ' · Wave ' + S.wave + ' · Kills ' + S.kills;
+  el.endText.textContent = 'The berth is lost. Score ' + S.score + ' · Level ' + S.level + ' · Kills ' + S.kills;
   el.nextBtn.style.display = 'none'; el.retryBtn.style.display = 'inline-block';
   el.endScreen.style.display = 'flex';
   if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -1509,7 +1781,7 @@ el.menuBtn.addEventListener('click', function () {
   el.startScreen.style.display = 'flex';
   S.state = 'menu';
 });
-el.nextBtn.addEventListener('click', nextWave);
+el.nextBtn.addEventListener('click', nextLevel);
 el.retryBtn.addEventListener('click', restartGame);
 
 /* ---------- main loop ---------- */
@@ -1539,25 +1811,38 @@ function animate() {
     camera.lookAt(0, 3, -6);
   } else if (S.state === 'playing') {
     updatePlayer(dt);
-    // spawn queue (drones + raiders, mixed from wave 1)
-    if (spawnQueue > 0 || raiderQueue > 0) {
+    // spawn in groups of 2–3 (0.45s apart), groups 0.8–1.5s apart (GPT guide §4)
+    if (spawnList.length > 0) {
+      setPhase('spawning');
       spawnTimer -= dt;
-      if (spawnTimer <= 0 && drones.length + raiders.length < 7) {
-        var spawnRaiderNow = raiderQueue > 0 && (spawnQueue === 0 || Math.random() < 0.4);
-        if (spawnRaiderNow) { spawnRaider(S.wave); raiderQueue--; }
-        else { spawnDrone(S.wave); spawnQueue--; }
-        spawnTimer = 2.2;
+      if (spawnTimer <= 0 && raiders.length < 8) {
+        spawnRaider(spawnList.shift(), S.level);
+        spawnGroupLeft--;
+        if (spawnGroupLeft <= 0) { spawnGroupLeft = 2 + Math.floor(Math.random() * 2); spawnTimer = rnd(0.8, 1.5); }
+        else spawnTimer = 0.45;
         updateHUD();
       }
+    } else if (raiders.length > 0) {
+      setPhase('combat');
     }
-    updateDrones(dt);
     updateRaiders(dt);
     if (S.firing && !S.reloading && S.time - S.lastShot >= CFG.fireInterval) shoot();
     if (S.reloading && S.time >= S.reloadEnd) finishReload();
-    if (spawnQueue === 0 && raiderQueue === 0 && drones.length === 0 && raiders.length === 0) waveCleared();
+    if (spawnList.length === 0 && raiders.length === 0) levelCleared();
     fpsAcc += dt; fpsN++;
-    if (fpsN >= 30) { fpsShown = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; setBoot('boot ok · state=playing · fps~' + fpsShown + ' · wave=' + S.wave + ' · hp=' + Math.ceil(S.hp) + ' · score=' + S.score); }
+    if (fpsN >= 30) { fpsShown = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; setBoot('boot ok · state=playing · fps~' + fpsShown + ' · level=' + S.level + ' · hp=' + Math.ceil(S.hp) + ' · score=' + S.score); }
+  } else if (S.state === 'waveclear') {
+    // intermission countdown — auto-advance to the next level
+    if (waveClearTimer > 0) {
+      waveClearTimer -= dt;
+      var cd = document.getElementById('clearCountdown');
+      if (cd) cd.textContent = 'NEXT LEVEL IN ' + Math.max(0, Math.ceil(waveClearTimer));
+      if (waveClearTimer <= 0) nextLevel();
+    }
   }
+  // radar at 10 Hz (ground truth, not every frame)
+  radarAcc += dt;
+  if (radarAcc >= 0.1) { radarAcc = 0; drawRadar(); }
   renderer.render(scene, camera);
 }
 
